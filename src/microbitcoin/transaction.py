@@ -1,9 +1,21 @@
-from dataclasses import dataclass, field
+import hashlib
+from dataclasses import dataclass, field, replace
+from enum import IntEnum
 
 import construct as c
 
-from . import CompactUint, ConstFlag
+from .utils import CompactUint, ConstFlag, hash256
 from .struct import Struct, subcon
+
+
+class HashType(IntEnum):
+    """Possible values of Bitcoin hashtypes."""
+
+    SIGHASH_ALL = 0x01
+    SIGHASH_NONE = 0x02
+    SIGHASH_SINGLE = 0x03
+    SIGHASH_ANYONECANPAY = 0x80
+
 
 BitcoinBytes = c.Prefixed(CompactUint, c.GreedyBytes)
 """Bitcoin string of bytes.
@@ -36,10 +48,10 @@ class TxInput(Struct):
 class TxOutput(Struct):
     """Transaction output."""
 
-    value: int
+    amount: int
     script_pubkey: bytes
 
-    SUBCON = c.Struct("value" / c.Int64ul, "script_pubkey" / BitcoinBytes)
+    SUBCON = c.Struct("amount" / c.Int64ul, "script_pubkey" / BitcoinBytes)
 
 
 TxInputWitness = c.PrefixedArray(CompactUint, BitcoinBytes)
@@ -55,6 +67,7 @@ class Transaction(Struct):
     """
 
     version: int
+    segwit: bool
     lock_time: int
     witness: list[TxInputWitness] = field(default_factory=list)
     inputs: list[TxInput] = subcon(TxInput)
@@ -69,3 +82,65 @@ class Transaction(Struct):
         "lock_time" / c.Int32ul,
         c.Terminated,
     )
+
+    def get_txid(self) -> bytes:
+        non_segwit = replace(self, segwit=False)
+        return non_segwit.get_txhash()
+
+    def get_txhash(self) -> bytes:
+        return hash256(self.SUBCON.build(self))[::-1]
+
+    def get_bip143_digest(
+        self,
+        input_idx: int,
+        prevout: TxOutput,
+        *,
+        hash_type: HashType = HashType.SIGHASH_ALL
+    ) -> bytes:
+        if hash_type != HashType.SIGHASH_ALL:
+            raise NotImplementedError
+
+        selected_input = self.inputs[input_idx]
+        
+        hash = hashlib.sha256()
+        # 1. nVersion
+        hash.update(self.version.to_bytes(4, "little"))
+
+        # 2. hashPrevouts
+        hash_prevouts = hashlib.sha256()
+        for inp in self.inputs:
+            hash_prevouts.update(inp.build())
+        hash.update(hash_prevouts.digest())
+
+        # 3. hashSequence
+        hash_sequence = hashlib.sha256()
+        for inp in self.inputs:
+            hash_sequence.update(inp.sequence.to_bytes(4, "little"))
+        hash.update(hash_sequence.digest())
+
+        # 4. outpoint
+        hash.update(selected_input.tx)
+        hash.update(selected_input.index.to_bytes(4, "little"))
+
+        # 5. scriptCode of the input
+        hash.update(prevout.script_pubkey)
+
+        # 6. amount of the output
+        hash.update(prevout.amount.to_bytes(8, "little"))
+
+        # 7. nSequence
+        hash.update(selected_input.sequence.to_bytes(4, "little"))
+
+        # 8. hashOutputs
+        hash_outputs = hashlib.sha256()
+        for out in self.outputs:
+            hash_outputs.update(out.amount.to_bytes(8, "little"))
+        hash.update(hash_outputs.digest())
+
+        # 9. nLocktime
+        hash.update(self.lock_time.to_bytes(4, "little"))
+
+        # 10. hashType
+        hash.update(hash_type.value.to_bytes(4, "little"))
+
+        return hash.digest()

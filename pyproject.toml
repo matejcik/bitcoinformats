@@ -1,0 +1,33 @@
+[tool.poetry]
+name = "microbitcoin"
+version = "0.1.0"
+authors = ["matejcik <ja@matejcik.cz>"]
+classifiers = [
+  "Development Status :: 2 - Pre-Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+  "Natural Language :: English",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.8",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+]
+description = "Collection of Bitcoin utilities"
+license = "GPL-3.0-or-later"
+
+[tool.poetry.dependencies]
+click = ">=8,<9"
+construct = ">=2.10"
+fastecdsa = ">=1.7"
+python = ">=3.8,<4"
+
+[tool.poetry.dev-dependencies]
+autoflake = "^1.4"
+black = {version = "^22.3.0", allow-prereleases = true}
+
+[build-system]
+build-backend = "poetry.core.masonry.api"
+requires = ["poetry-core>=1.0.0"]
+
+[tool.isort]
+profile = "black"

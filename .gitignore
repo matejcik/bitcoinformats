@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+/build/
+/dist/
+*.egg-info/
+/docs/_build
+/htmlcov
+/.coverage
+/.tox
+
+# Unit test / coverage reports
+.pytest_cache/
+
+/.vscode
+
+.DS_Store

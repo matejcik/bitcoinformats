@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import typing as t
 
-from .. import hash256
+from .utils import hash256
 
 __b58chars = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
 __b58base = len(__b58chars)

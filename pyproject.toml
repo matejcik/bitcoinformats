@@ -20,6 +20,7 @@ click = ">=8,<9"
 construct = ">=2.10"
 fastecdsa = ">=1.7"
 python = ">=3.8,<4"
+typing-extensions = "^4.1.1"
 
 [tool.poetry.dev-dependencies]
 autoflake = "^1.4"

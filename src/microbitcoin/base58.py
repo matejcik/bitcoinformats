@@ -20,7 +20,7 @@ def b58encode(v: bytes) -> str:
         div, mod = divmod(long_value, __b58base)
         chars.append(__b58chars[mod])
         long_value = div
-    chars.append(long_value)
+    chars.append(__b58chars[long_value])
 
     # Bitcoin does a little leading-zero-compression:
     # leading 0-bytes in the input become leading-1s

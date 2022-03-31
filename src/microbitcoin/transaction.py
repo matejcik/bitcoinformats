@@ -69,9 +69,9 @@ class Transaction(Struct):
     version: int
     segwit: bool
     lock_time: int
-    witness: list[TxInputWitness] = field(default_factory=list)
     inputs: list[TxInput] = subcon(TxInput)
     outputs: list[TxOutput] = subcon(TxOutput)
+    witness: list[TxInputWitness] = field(default_factory=list)
 
     SUBCON = c.Struct(
         "version" / c.Int32ul,

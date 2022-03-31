@@ -18,8 +18,16 @@ class Struct:
     def build(self) -> bytes:
         return self.SUBCON.build(dataclasses.asdict(self))
 
+    @staticmethod
+    def _decontainerize(item: t.Any) -> t.Any:
+        if isinstance(item, c.ListContainer):
+            return [Struct._decontainerize(i) for i in item]
+        return item
+
+
     @classmethod
     def _to_struct_recursive(cls: type[Self], data: c.Container) -> Self:
+        del data["_io"]
         for field in dataclasses.fields(cls):
             subcls = field.metadata.get("substruct")
             if subcls is None:
@@ -38,6 +46,9 @@ class Struct:
                 raise ValueError(
                     f"Mismatched type for field {field.name}: expected a struct, found {type(field_data)}"
                 )
+
+        for key in data:
+            data[key] = cls._decontainerize(data[key])
         return cls(**data)
 
     @classmethod

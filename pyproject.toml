@@ -25,6 +25,7 @@ typing-extensions = "^4.1.1"
 [tool.poetry.dev-dependencies]
 autoflake = "^1.4"
 black = {version = "^22.3.0", allow-prereleases = true}
+pytest = "^7.1.1"
 
 [build-system]
 build-backend = "poetry.core.masonry.api"

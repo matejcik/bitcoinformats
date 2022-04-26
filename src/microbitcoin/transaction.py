@@ -1,5 +1,5 @@
 import hashlib
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field, replace, asdict
 from enum import IntEnum
 
 import construct as c
@@ -88,7 +88,7 @@ class Transaction(Struct):
         return non_segwit.get_txhash()
 
     def get_txhash(self) -> bytes:
-        return hash256(self.SUBCON.build(self))[::-1]
+        return hash256(self.SUBCON.build(asdict(self)))[::-1]
 
     def get_bip143_digest(
         self,

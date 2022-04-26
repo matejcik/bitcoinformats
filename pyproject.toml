@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "microbitcoin"
+name = "bitcoinformats"
 version = "0.1.0"
 authors = ["matejcik <ja@matejcik.cz>"]
 classifiers = [

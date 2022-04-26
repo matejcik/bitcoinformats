@@ -1,19 +1,19 @@
 ============
-microbitcoin
+bitcoinformats
 ============
 
-.. image:: https://img.shields.io/pypi/v/microbitcoin.svg
-        :target: https://pypi.python.org/pypi/microbitcoin
+.. image:: https://img.shields.io/pypi/v/bitcoinformats.svg
+        :target: https://pypi.python.org/pypi/bitcoinformats
 
-.. image:: https://img.shields.io/travis/trezor/microbitcoin.svg
-        :target: https://travis-ci.org/trezor/microbitcoin
+.. image:: https://img.shields.io/travis/trezor/bitcoinformats.svg
+        :target: https://travis-ci.org/trezor/bitcoinformats
 
-.. image:: https://readthedocs.org/projects/microbitcoin/badge/?version=latest
-        :target: https://microbitcoin.readthedocs.io/en/latest/?badge=latest
+.. image:: https://readthedocs.org/projects/bitcoinformats/badge/?version=latest
+        :target: https://bitcoinformats.readthedocs.io/en/latest/?badge=latest
         :alt: Documentation Status
 
-.. image:: https://pyup.io/repos/github/trezor/microbitcoin/shield.svg
-     :target: https://pyup.io/repos/github/trezor/microbitcoin/
+.. image:: https://pyup.io/repos/github/trezor/bitcoinformats/shield.svg
+     :target: https://pyup.io/repos/github/trezor/bitcoinformats/
      :alt: Updates
 
 
@@ -32,7 +32,7 @@ Footer
 ------
 
 * Free software: GNU General Public License v3
-* Documentation: https://microbitcoin.readthedocs.io.
+* Documentation: https://bitcoinformats.readthedocs.io.
 * This package was created with Cookiecutter_ and the
   `audreyr/cookiecutter-pypackage`_ project template.
 

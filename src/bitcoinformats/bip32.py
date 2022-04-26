@@ -243,6 +243,21 @@ def parse_path(nstr: str) -> list[int]:
         raise ValueError("Invalid BIP32 path", nstr) from e
 
 
+def unparse_path(path: list[int]) -> str:
+    """
+    Convert list of uint32 integers with hardened flags to BIP32 path string.
+    """
+
+    def unharden(x: int) -> str:
+        if x & HARDENED_FLAG:
+            return str(x & ~HARDENED_FLAG) + "'"
+        else:
+            return str(x)
+
+    parts = ["m"] + [unharden(x) for x in path]
+    return "/".join(parts)
+
+
 def from_seed(
     seed: bytes, path: list[int], *, seed_salt: bytes = b"Bitcoin seed"
 ) -> ExtendedPrivateKey:

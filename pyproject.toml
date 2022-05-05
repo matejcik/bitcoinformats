@@ -18,7 +18,8 @@ license = "GPL-3.0-or-later"
 [tool.poetry.dependencies]
 click = ">=8,<9"
 construct = ">=2.10"
-fastecdsa = ">=1.7"
+ecdsa = "^0.17.0"
+gmpy2 = ">=2.1.2"
 python = ">=3.8,<4"
 typing-extensions = "^4.1.1"
 

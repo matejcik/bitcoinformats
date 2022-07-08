@@ -37,7 +37,6 @@ def _calculate_pubkey(privkey: int | mpz) -> Point:
     return SECP256k1.generator * privkey
 
 
-@dataclass
 class Xpub(Struct):
     version: int
     depth: int

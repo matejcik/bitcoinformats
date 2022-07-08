@@ -1,5 +1,5 @@
 import hashlib
-from dataclasses import dataclass, field, replace, asdict
+from dataclasses import field, replace, asdict
 from enum import IntEnum
 
 import construct as c
@@ -27,7 +27,6 @@ TxHash = c.Transformed(c.Bytes(32), lambda b: b[::-1], 32, lambda b: b[::-1], 32
 """Transaction hash, encoded as a reversed sequence of bytes."""
 
 
-@dataclass
 class TxInput(Struct):
     """Transaction input."""
 
@@ -44,7 +43,6 @@ class TxInput(Struct):
     )
 
 
-@dataclass
 class TxOutput(Struct):
     """Transaction output."""
 
@@ -58,7 +56,6 @@ TxInputWitness = c.PrefixedArray(CompactUint, BitcoinBytes)
 """Array of witness records."""
 
 
-@dataclass
 class Transaction(Struct):
     """Bitcoin transaction.
 
@@ -71,7 +68,7 @@ class Transaction(Struct):
     lock_time: int
     inputs: list[TxInput] = subcon(TxInput)
     outputs: list[TxOutput] = subcon(TxOutput)
-    witness: list[TxInputWitness] = field(default_factory=list)
+    witness: list[bytes] = field(default_factory=list)
 
     SUBCON = c.Struct(
         "version" / c.Int32ul,
@@ -84,7 +81,7 @@ class Transaction(Struct):
     )
 
     def get_txid(self) -> bytes:
-        non_segwit = replace(self, segwit=False)
+        non_segwit = replace(self, segwit=False, witness=[])
         return non_segwit.get_txhash()
 
     def get_txhash(self) -> bytes:
@@ -101,7 +98,7 @@ class Transaction(Struct):
             raise NotImplementedError
 
         selected_input = self.inputs[input_idx]
-        
+
         hash = hashlib.sha256()
         # 1. nVersion
         hash.update(self.version.to_bytes(4, "little"))

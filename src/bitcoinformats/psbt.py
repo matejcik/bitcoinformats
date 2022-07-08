@@ -1,9 +1,12 @@
+import typing as t
 import warnings
+from typing_extensions import dataclass_transform, Self
 
 import construct as c
 
-from . import CompactUint, Optional
 from .transaction import Transaction, TxOutput
+from .utils import CompactUint
+from .struct import Struct, subcon
 
 
 PSBT_PROPRIETARY_BYTE = 0xFC
@@ -13,23 +16,47 @@ class PsbtError(Exception):
     pass
 
 
-# fmt: off
-PsbtKeyValue = c.Struct(
-    "key" / c.Prefixed(CompactUint, c.Struct(
+class PsbtKey(Struct):
+    """Key for a PSBT entry."""
+
+    type: int
+    data: bytes
+
+    SUBCON = c.Struct(
         "type" / CompactUint,
-        "data" / Optional(c.GreedyBytes),
-    )),
-    "value" / c.Prefixed(CompactUint, c.GreedyBytes),
-)
+        "key" / c.GreedyBytes,
+    )
 
-PsbtProprietaryKey = c.Struct(
-    "prefix" / c.CString("utf-8"),
-    "subtype" / CompactUint,
-    "data" / Optional(c.GreedyBytes),
-)
 
+class PsbtKeyValue(Struct):
+    """Key-value pair in a PSBT entry."""
+
+    value: bytes
+    key: PsbtKey = subcon(PsbtKey)
+
+    SUBCON = c.Struct(
+        "key" / c.Prefixed(CompactUint, PsbtKey.SUBCON),
+        "value" / c.Prefixed(CompactUint, c.GreedyBytes),
+    )
+
+
+class PsbtProprietaryKey(Struct):
+    """Proprietary key in a PSBT entry."""
+
+    prefix: str
+    subtype: int
+    data: bytes
+
+    SUBCON = c.Struct(
+        "prefix" / c.CString("utf-8"),
+        "subtype" / CompactUint,
+        "data" / c.Optional(c.GreedyBytes),
+    )
+
+
+# fmt: off
 PsbtSequence = c.FocusedSeq("content",
-    "content" / c.GreedyRange(PsbtKeyValue),
+    "content" / c.GreedyRange(PsbtKeyValue.SUBCON),
     c.Const(b"\0"),
 )
 
@@ -38,70 +65,126 @@ PsbtEnvelope = c.FocusedSeq("sequences",
     "sequences" / c.GreedyRange(PsbtSequence),
     c.Terminated,
 )
-
-
-Bip32Field = c.Struct(
-    "fingerprint" / c.Bytes(4),
-    "address_n" / c.GreedyRange(c.Int32ul),
-)
 # fmt: on
 
 
-class PsbtMapType:
-    FIELDS = {}
+class Bip32Field(Struct):
+    """BIP32 field."""
 
-    def __init__(self, **kwargs):
-        self._proprietary = {}
-        self._unknown = {}
-        for name, keytype, _ in self.FIELDS.values():
+    fingerprint: bytes
+    address_n: list[int]
+
+    SUBCON = c.Struct(
+        "fingerprint" / c.Bytes(4),
+        "address_n" / c.GreedyRange(c.Int32ul),
+    )
+
+
+class Field:
+    def __init__(
+        self,
+        id: int,
+        *,
+        key: type[bytes] | type[Struct] | c.Construct | None = None,
+        value: type[bytes] | type[Struct] | c.Construct = bytes,
+    ) -> None:
+        self.id = id
+        self.key = key
+        self.value = value
+
+
+def field(
+    id: int,
+    *,
+    key: type[bytes] | type[Struct] | c.Construct | None = None,
+    value: type[bytes] | type[Struct] | c.Construct = bytes,
+) -> t.Any:
+    return Field(id, key=key, value=value)
+
+
+@dataclass_transform(field_specifiers=(field,))
+class PsbtMapType:
+    _fields: dict[int, tuple[str, Field]] = {}
+
+    def __init__(self, **kwargs: t.Any) -> None:
+        self._proprietary: dict[str, dict[tuple[int, bytes], t.Any]] = {}
+        self._unknown: list[PsbtKeyValue] = []
+        self._collect_fields()
+        names = {name: field for name, field in self._fields.values()}
+
+        # process values specified in kwargs
+        for arg, value in kwargs.items():
+            if arg not in names:
+                raise TypeError(f"Unknown field: {arg}")
+            if names[arg].key is not None and not isinstance(value, dict):
+                raise PsbtError("must supply dict for multi-key fields")
+            setattr(self, arg, value)
+
+        # process rest of fields
+        for name, field in names.items():
             if name in kwargs:
-                value = kwargs[name]
-                if keytype is not None and not isinstance(value, dict):
-                    raise PsbtError("must supply dict for multi-key fields")
-                setattr(self, name, value)
-            elif keytype is None:
+                continue
+            elif field.key is None:
                 setattr(self, name, None)
             else:
                 setattr(self, name, {})
 
-    def __repr__(self):
+    @classmethod
+    def _collect_fields(cls) -> dict[int, tuple[str, Field]]:
+        if not cls._fields:
+            for key, value in cls.__dict__.items():
+                if not isinstance(value, Field):
+                    continue
+                cls._fields[value.id] = (key, value)
+        return cls._fields
+
+    def __repr__(self) -> str:
         d = {}
         for key, value in self.__dict__.items():
+            if value.startswith("_"):
+                continue
             if value is None or value == {}:
                 continue
             d[key] = value
         return "<%s: %s>" % (self.__class__.__name__, d)
 
-    def __bool__(self):
+    def __bool__(self) -> bool:
         """Return False if no fields are set, True otherwise"""
         return any(v is not None and v != {} for v in self.__dict__.values())
 
     @staticmethod
-    def _decode_field(field_type, field_bytes):
+    def _decode_field(
+        field_type: type[bytes] | type[Struct] | c.Construct | None, field_bytes: bytes
+    ) -> t.Any:
         if field_type is None:
             return None
         if field_type is bytes:
             return field_bytes
-        if field_type is str:
-            return field_bytes.decode()
+        if isinstance(field_type, type) and issubclass(field_type, Struct):
+            return field_type.parse(field_bytes)
         if isinstance(field_type, c.Construct):
             return field_type.parse(field_bytes)
-        else:
-            raise PsbtError("Unknown field type")
+        raise RuntimeError("Unknown field type")
 
     @staticmethod
-    def _encode_field(field_type, field_value):
+    def _encode_field(
+        field_type: type[bytes] | type[Struct] | c.Construct, field_value: t.Any
+    ) -> bytes:
         if field_type is bytes:
             return field_value
-        if field_type is str:
-            return field_value.encode()
+        if (
+            isinstance(field_type, type)
+            and issubclass(field_type, Struct)
+            and isinstance(field_value, field_type)
+        ):
+            return field_value.build()
         if isinstance(field_type, c.Construct):
             return field_type.build(field_value)
-        else:
-            raise PsbtError("Unknown field type")
+        raise RuntimeError("Unknown field type")
 
     @classmethod
-    def from_sequence(cls, sequence):
+    def from_sequence(cls, sequence: list[PsbtKeyValue]) -> Self:
+        cls._collect_fields()
         psbt = cls()
         seen_keys = set()
         for v in sequence:
@@ -116,113 +199,87 @@ class PsbtMapType:
                 prop_dict[prop_key.subtype, prop_key.data] = v.value
                 continue
 
-            if key not in cls.FIELDS:
+            if key not in cls._fields:
                 warnings.warn(f"Unknown field type 0x{key:02x}")
-                psbt._unknown[key, v.key.data] = v.value
+                psbt._unknown.append(v)
                 continue
 
-            name, keydata_type, value_type = cls.FIELDS[key]
-            if keydata_type is None and v.key.data:
+            name, field = cls._fields[key]
+            if field.key is None and v.key.data:
                 raise PsbtError(f"Key data not allowed on '{name}'")
-            if keydata_type is not None and not v.key.data:
+            if field.key is not None and not v.key.data:
                 raise PsbtError(f"Key data missing on '{name}'")
 
-            parsed_key = cls._decode_field(keydata_type, v.key.data)
-            parsed_value = cls._decode_field(value_type, v.value)
-            if keydata_type:
+            parsed_key = cls._decode_field(field.key, v.key.data)
+            parsed_value = cls._decode_field(field.value, v.value)
+            if field.key:
                 getattr(psbt, name)[parsed_key] = parsed_value
             else:
                 setattr(psbt, name, parsed_value)
         return psbt
 
     def to_sequence(self):
-        sequence = []
-        for key, (name, keydata_type, value_type) in self.FIELDS.items():
-            if keydata_type is None:
+        sequence: list[PsbtKeyValue] = []
+        for key, (name, field) in self._fields.items():
+            if field.key is None:
                 value = getattr(self, name)
                 if value is None:
                     continue
-                value_bytes = self._encode_field(value_type, value)
-                v = dict(key=dict(type=key, data=None), value=value_bytes)
-                sequence.append(v)
+                value_bytes = self._encode_field(field.value, value)
+                sequence.append(
+                    PsbtKeyValue(key=PsbtKey(type=key, data=b""), value=value_bytes)
+                )
             else:
                 values = getattr(self, name)
                 if values == {}:
                     continue
                 for keydata, value in values.items():
-                    keydata_bytes = self._encode_field(keydata_type, keydata)
-                    value_bytes = self._encode_field(value_type, value)
-                    v = dict(key=dict(type=key, data=keydata_bytes), value=value_bytes)
-                    sequence.append(v)
-        for (key_type, key_data), value in self._unknown.items():
-            v = dict(key=dict(type=key_type, data=key_data), value=value)
-            sequence.append(v)
+                    keydata_bytes = self._encode_field(field.key, keydata)
+                    value_bytes = self._encode_field(field.value, value)
+                    sequence.append(
+                        PsbtKeyValue(
+                            key=PsbtKey(type=key, data=keydata_bytes), value=value_bytes
+                        )
+                    )
+
         for prefix, proprietary in self._proprietary.items():
-            for (key_subtype, key_data), value in proprietary.items():
-                data = PsbtProprietaryKey.build(
-                    dict(prefix=prefix, subtype=key_subtype, data=key_data)
-                )
-                v = dict(key=dict(type=PSBT_PROPRIETARY_BYTE, data=data), value=value)
-                sequence.append(v)
+            for (subtype, data), value in proprietary.items():
+                data = PsbtProprietaryKey(prefix=prefix, subtype=subtype, data=data)
+                key = PsbtKey(type=PSBT_PROPRIETARY_BYTE, data=data.build())
+                sequence.append(PsbtKeyValue(key=key, value=value))
+
+        sequence.extend(self._unknown)
         return sequence
 
 
 class PsbtGlobalType(PsbtMapType):
-    FIELDS = {
-        0x00: ("transaction", None, Transaction),
-        0x01: ("global_xpub", None, bytes),
-        0x02: ("version", None, c.Int32ul),
-    }
-
-    def __init__(self, **kwargs):
-        self.transaction = None
-        self.global_xpub = None
-        self.version = None
-        super().__init__(**kwargs)
+    transaction: Transaction = field(0x00, value=Transaction)
+    global_xpub: bytes = field(0x01, value=bytes)
+    version: int = field(0x02, value=c.Int32ul)
 
 
 class PsbtInputType(PsbtMapType):
-    FIELDS = {
-        0x00: ("non_witness_utxo", None, Transaction),
-        0x01: ("witness_utxo", None, TxOutput),
-        0x02: ("signature", bytes, bytes),
-        0x03: ("sighash_type", None, c.Int32ul),
-        0x04: ("redeem_script", None, bytes),
-        0x05: ("witness_script", None, bytes),
-        0x06: ("bip32_path", bytes, Bip32Field),
-        0x07: ("script_sig", None, bytes),
-        0x08: ("witness", None, bytes),
-        0x09: ("por_commitment", None, str),
-    }
-
-    def __init__(self, **kwargs):
-        self.non_witnes_utxo = None
-        self.witness_utxo = None
-        self.signature = {}
-        self.sighash_type = None
-        self.redeem_script = None
-        self.witness_script = None
-        self.bip32_path = {}
-        self.script_sig = None
-        self.witness = None
-        super().__init__(**kwargs)
+    non_witnes_utxo: Transaction = field(0x00, value=Transaction)
+    witness_utxo: TxOutput = field(0x01, value=TxOutput)
+    signature: bytes = field(0x02, key=bytes, value=bytes)
+    sighash_type: int = field(0x03, value=c.Int32ul)
+    redeem_script: bytes = field(0x04, value=bytes)
+    witness_script: bytes = field(0x05, value=bytes)
+    bip32_path: Bip32Field = field(0x06, key=bytes, value=Bip32Field)
+    script_sig: bytes = field(0x07, value=bytes)
+    witness: bytes = field(0x08, value=bytes)
+    por_commitment: str = field(0x09, value=c.GreedyString("utf8"))
 
 
 class PsbtOutputType(PsbtMapType):
-    FIELDS = {
-        0x00: ("redeem_script", None, bytes),
-        0x01: ("witness", None, bytes),
-        0x02: ("bip32_path", bytes, Bip32Field),
-    }
-
-    def __init__(self, **kwargs):
-        self.redeem_script = None
-        self.witness = None
-        self.bip32_path = {}
-        super().__init__(**kwargs)
+    redeem_script: bytes = field(0x00, value=bytes)
+    witness: bytes = field(0x01, value=bytes)
+    bip32_path: Bip32Field = field(0x02, key=bytes, value=Bip32Field)
 
 
-def read_psbt(psbt_bytes):
+def read_psbt(
+    psbt_bytes: bytes,
+) -> tuple[PsbtGlobalType, list[PsbtInputType], list[PsbtOutputType]]:
     try:
         psbt = PsbtEnvelope.parse(psbt_bytes)
         if not psbt:
@@ -242,7 +299,11 @@ def read_psbt(psbt_bytes):
         raise PsbtError("Could not parse PBST") from e
 
 
-def write_psbt(main, inputs, outputs):
+def write_psbt(
+    main: PsbtGlobalType,
+    inputs: t.Sequence[PsbtInputType],
+    outputs: t.Sequence[PsbtOutputType],
+) -> bytes:
     sequences = (
         [main.to_sequence()]
         + [inp.to_sequence() for inp in inputs]

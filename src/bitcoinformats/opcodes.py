@@ -162,11 +162,12 @@ def op_push(datalen: int) -> bytes:
     raise ValueError("data too big for OP_PUSH")
 
 
-def op_number(n: int) -> int:
+def op_number(n: int) -> Opcode:
     if n == 0:
         return Opcode.OP_0
     if 1 <= n <= 16:
-        return Opcode.OP_1 + n - 1
+        opcode = Opcode.OP_1 + n - 1
+        return Opcode(opcode)
     if n == -1:
         return Opcode.OP_1NEGATE
     raise ValueError("invalid OP_number")

@@ -27,6 +27,8 @@ Modified to support Bech32M and saner typing properties.
 from enum import IntEnum
 import typing as t
 
+HRP_SEPARATOR = "1"
+
 
 class Encoding(IntEnum):
     """Enumeration type to list the various supported encodings."""
@@ -77,23 +79,30 @@ def bech32_create_checksum(hrp: str, data: list[int], spec: Encoding) -> list[in
 def bech32_encode(hrp: str, data: list[int], spec: Encoding) -> str:
     """Compute a Bech32 string given HRP and data values."""
     combined = data + bech32_create_checksum(hrp, data, spec)
-    return hrp + "1" + "".join([CHARSET[d] for d in combined])
+    return hrp + HRP_SEPARATOR + "".join([CHARSET[d] for d in combined])
 
 
-def bech32_decode(bech: str, max_bech_len: int = 90) -> tuple[str, list[int], Encoding]:
+def hrp_split(bech: str) -> tuple[str, str]:
+    """Get the HRP and data part from a Bech32 string."""
+    try:
+        hrp, data = bech.rsplit(HRP_SEPARATOR, maxsplit=1)
+    except ValueError as e:
+        raise ValueError("invalid Bech32 parts") from e
+    if not hrp or len(data) < 6:
+        raise ValueError("invalid Bech32 part lengths")
+    return hrp, data
+
+
+def bech32_decode(bech: str) -> tuple[str, list[int], Encoding]:
     """Validate a Bech32/Bech32m string, and determine HRP and data."""
-    if (any(ord(x) < 33 or ord(x) > 126 for x in bech)) or (
-        bech.lower() != bech and bech.upper() != bech
-    ):
+    if not all(33 <= ord(x) <= 126 for x in bech):
         raise ValueError("invalid character in Bech32 string")
-    bech = bech.lower()
-    pos = bech.rfind("1")
-    if pos < 1 or pos + 7 > len(bech) or len(bech) > max_bech_len:
-        raise ValueError("invalid Bech32 string length")
-    if not all(x in CHARSET for x in bech[pos + 1 :]):
+    if bech.lower() != bech and bech.upper() != bech:
+        raise ValueError("Bech32 string cannot be mixed-case")
+    hrp, datapart = hrp_split(bech.lower())
+    if not all(x in CHARSET for x in datapart):
         raise ValueError("invalid character in Bech32 data part")
-    hrp = bech[:pos]
-    data = [CHARSET.find(x) for x in bech[pos + 1 :]]
+    data = [CHARSET.find(x) for x in datapart]
     spec = bech32_verify_checksum(hrp, data)
     return hrp, data[:-6], spec
 
@@ -177,3 +186,25 @@ def encode(hrp: str, witver: int, witprog: bytes) -> str:
         return ret
     except ValueError as e:
         raise ValueError(f"failed to encode segwit address") from e
+
+
+def encode_raw(hrp: str, data: bytes, spec: Encoding = Encoding.BECH32) -> str:
+    """Encode raw data as Bech32 string."""
+    bits = convertbits(data, 8, 5)
+    return bech32_encode(hrp, bits, spec)
+
+
+def decode_raw(hrp: str, addr: str, spec: Encoding = Encoding.BECH32) -> bytes:
+    """Decode Bech32 string to raw data."""
+    hrpgot, data, specgot = bech32_decode(addr)
+    if hrpgot != hrp:
+        raise ValueError("mismatched HRP")
+    if specgot != spec:
+        raise ValueError("invalid Bech32 encoding")
+    return bytes(convertbits(data, 5, 8, False))
+
+
+def decode_raw_parts(addr: str) -> tuple[str, bytes, Encoding]:
+    """Decode Bech32 string to raw data and HRP."""
+    hrp, data, spec = bech32_decode(addr)
+    return hrp, bytes(convertbits(data, 5, 8, False)), spec

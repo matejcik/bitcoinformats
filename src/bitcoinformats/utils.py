@@ -8,7 +8,7 @@ import construct as c
 
 def hash256(data: bytes) -> bytes:
     """Perform OP_HASH256.
-    
+
     Hashes the data with SHA256 twice.
     """
     return hashlib.sha256(hashlib.sha256(data).digest()).digest()
@@ -86,13 +86,44 @@ Encodes an int as either:
 def op_push(data: bytes) -> bytes:
     """Generate OP_PUSH instruction and length of the appropriate size."""
     n = len(data)
-    if n > 0xFFFF_FFFF:
-        raise ValueError("data too big for OP_PUSH")
     if n < 0x4C:
         return struct.pack("<B", n)
-    elif n < 0xFF:
+    if n <= 0xFF:
         return struct.pack("<BB", 0x4C, n)
-    elif n < 0xFFFF:
+    if n <= 0xFFFF:
         return struct.pack("<BS", 0x4D, n)
-    else:
+    if n <= 0xFFFF_FFFF:
         return struct.pack("<BL", 0x4E, n)
+    
+    raise ValueError("data too big for OP_PUSH")
+
+
+def build_op_push(data: bytes) -> bytes:
+    """Build an OP_PUSHed data by prefixing it with the appropriate OP_PUSH instruction."""
+    return op_push(data) + data
+
+
+def extract_op_push(data: bytes) -> bytes:
+    """Extract the data from an OP_PUSHed block."""
+    if not data:
+        raise ValueError("empty data")
+    header = data[0]
+    if header < 0x4C:
+        data_len = header
+        offset = 1
+    elif header == 0x4C and len(data) > 2:
+        data_len = data[1]
+        offset = 2
+    elif header == 0x4D and len(data) > 3:
+        data_len = int.from_bytes(data[1:3], "little")
+        offset = 3
+    elif header == 0x4E and len(data) > 5:
+        data_len = int.from_bytes(data[1:5], "little")
+        offset = 5
+    else:
+        raise ValueError("Invalid OP_PUSH header")
+
+    if len(data) != offset + data_len:
+        raise ValueError("Invalid OP_PUSH length")
+
+    return data[offset:]

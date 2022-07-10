@@ -1,12 +1,9 @@
-============
+==============
 bitcoinformats
-============
+==============
 
 .. image:: https://img.shields.io/pypi/v/bitcoinformats.svg
         :target: https://pypi.python.org/pypi/bitcoinformats
-
-.. image:: https://img.shields.io/travis/trezor/bitcoinformats.svg
-        :target: https://travis-ci.org/trezor/bitcoinformats
 
 .. image:: https://readthedocs.org/projects/bitcoinformats/badge/?version=latest
         :target: https://bitcoinformats.readthedocs.io/en/latest/?badge=latest

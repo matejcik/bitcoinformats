@@ -59,12 +59,11 @@ Ready to contribute? Here's how to set up ``bitcoinformats`` for local developme
 
     $ git clone git@github.com:your_name_here/bitcoinformats.git
 
-3. Install your local copy into a virtualenv. Assuming you have ``virtualenvwrapper``
-   installed, this is how you set up your fork for local development::
+3. Install and enter your Poetry environment::
 
-    $ mkvirtualenv bitcoinformats
     $ cd bitcoinformats/
-    $ python setup.py develop
+    $ poetry install
+    $ poetry shell
 
 4. Create a branch for local development::
 
@@ -75,7 +74,7 @@ Ready to contribute? Here's how to set up ``bitcoinformats`` for local developme
 5. When you're done making changes, check that your changes pass flake8 and the
    tests, including testing other Python versions with tox::
 
-    $ flake8 bitcoinformats tests
+    $ flake8 src tests
     $ pytest
     $ tox
 
@@ -84,8 +83,12 @@ Ready to contribute? Here's how to set up ``bitcoinformats`` for local developme
 6. Commit your changes and push your branch to GitHub::
 
     $ git add .
-    $ git commit -m "Your detailed description of your changes."
+    $ git commit -m "feat: your detailed description of your changes."
     $ git push origin name-of-your-bugfix-or-feature
+
+   For commit message formatting, refer to `Conventional Commits`_.   
+
+..`Conventional Commits`_: https://conventionalcommits.org/
 
 7. Submit a pull request through the GitHub website.
 
@@ -98,7 +101,7 @@ Before you submit a pull request, check that it meets these guidelines:
 2. If the pull request adds functionality, the docs should be updated. Put
    your new functionality into a function with a docstring, and add the
    feature to the list in README.rst.
-3. The pull request should work for Python 3.6 and 3.7. Check `Travis`_
+3. The pull request should work for Python 3.6 and up. Check `Travis`_
    and make sure that the tests pass for all supported Python versions.
 
 .. _Travis: https://travis-ci.org/matejcik/bitcoinformats/pull_requests
@@ -108,18 +111,19 @@ Tips
 
 To run a subset of tests::
 
-$ pytest tests.test_bitcoinformats
+$ pytest tests/test_bech32.py
+$ pytest -k P2PKH  # only run tests whose name contains the string P2PKH
 
 
-Deploying
----------
+.. Deploying
+.. ---------
 
-A reminder for the maintainers on how to deploy.
-Make sure all your changes are committed (including an entry in HISTORY.rst).
-Then run::
+.. A reminder for the maintainers on how to deploy.
+.. Make sure all your changes are committed (including an entry in HISTORY.rst).
+.. Then run::
 
-$ bumpversion patch # possible: major / minor / patch
-$ git push
-$ git push --tags
+.. $ bumpversion patch # possible: major / minor / patch
+.. $ git push
+.. $ git push --tags
 
-Travis will then deploy to PyPI if tests pass.
+.. Travis will then deploy to PyPI if tests pass.

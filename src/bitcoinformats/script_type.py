@@ -61,6 +61,8 @@ class Unknown(Script):
 class OpReturn(Script):
     data: bytes
 
+    BITCOIN_MAX_LENGTH = 80
+
     @classmethod
     def from_scriptpubkey(cls, script: bytes) -> Self:
         if script[0] != Opcode.OP_RETURN:
@@ -186,7 +188,7 @@ class P2SH(Script):
             raise ValueError("P2SH must be 23 bytes long")
         if script[:1] != cls.SCRIPT_PREFIX:
             raise ValueError("P2SH must start with OP_HASH160")
-        if script[-1] != cls.SCRIPT_SUFFIX:
+        if script[-1:] != cls.SCRIPT_SUFFIX:
             raise ValueError("P2SH must end with OP_EQUAL")
         return cls(parse_script_data(script[1:-1]))
 
@@ -295,7 +297,7 @@ class P2WSH(Script):
     def to_address(self, network: Network) -> str:
         if network.bech32_hrp is None:
             raise ValueError("P2WSH not supported for this network")
-        return bech32.encode(network.bech32_hrp, 0, self.script_hash)
+        return bech32.encode(network.bech32_hrp, self.WITNESS_VERSION, self.script_hash)
 
 
 class P2TR(P2WSH):
@@ -308,7 +310,7 @@ class P2TR(P2WSH):
     WITNESS_VERSION = 1
 
 
-ALL_SCRIPTS = (P2PKH, P2SH, P2WPKH, P2WSH, P2TR, OpReturn, Unknown)
+ALL_SCRIPTS = (P2PK, P2PKH, P2SH, P2WPKH, P2WSH, P2TR, OpReturn, Unknown)
 
 
 def from_scriptpubkey(script_pubkey: bytes) -> Script:

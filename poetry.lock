@@ -470,10 +470,13 @@ python-versions = ">=3.6"
 docs = ["sphinx", "jaraco.packaging (>=8.2)", "rst.linker (>=1.9)"]
 testing = ["pytest (>=4.6)", "pytest-checkdocs (>=2.4)", "pytest-flake8", "pytest-cov", "pytest-enabler (>=1.0.1)", "jaraco.itertools", "func-timeout", "pytest-black (>=0.3.7)", "pytest-mypy"]
 
+[extras]
+fastmath = []
+
 [metadata]
 lock-version = "1.1"
 python-versions = ">=3.6.2,<4"
-content-hash = "7131b7d70708f4f7b34904c61ce031fe9f0687a295db3af9edc83b2807e04b25"
+content-hash = "08d3eeb3bc27a4a89ab156cf3d5ac3a261372b967d03d933f795c898933d47b4"
 
 [metadata.files]
 atomicwrites = []

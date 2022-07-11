@@ -1,6 +1,4 @@
 [tool.poetry]
-name = "bitcoinformats"
-version = "0.1.0"
 authors = ["matejcik <ja@matejcik.cz>"]
 classifiers = [
   "Development Status :: 2 - Pre-Alpha",
@@ -16,7 +14,11 @@ classifiers = [
   "Programming Language :: Python :: 3.11",
 ]
 description = "Collection of Bitcoin utilities"
+homepage = "https://bitcoinformats.wtf/"
 license = "MIT"
+name = "bitcoinformats"
+repository = "https://github.com/matejcik/bitcoinformats"
+version = "0.1.0"
 
 [tool.poetry.dependencies]
 construct = ">=2.10"
@@ -24,14 +26,17 @@ ecdsa = "^0.17.0"
 python = ">=3.6.2,<4"
 typing-extensions = "^4.1.1"
 
+[tool.poetry.extras]
+fastmath = ["gmpy2"]
+
 [tool.poetry.dev-dependencies]
 autoflake = "^1.4"
 black = "^22.6.0"
-pytest = ">=5"
-pyright = { version = "^1.1.258", python = ">=3.7" }
-construct-typing = { version = "^0.5.2", python = ">=3.7" }
+construct-typing = {version = "^0.5.2", python = ">=3.7"}
 flake8 = "^4.0.1"
 isort = "^5.10.1"
+pyright = {version = "^1.1.258", python = ">=3.7"}
+pytest = ">=5"
 tox = "^3.25.1"
 tox-poetry-installer = "^0.8.4"
 

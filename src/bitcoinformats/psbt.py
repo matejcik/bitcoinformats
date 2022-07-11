@@ -1,13 +1,12 @@
 import typing as t
 import warnings
-from typing_extensions import dataclass_transform, Self
 
 import construct as c
+from typing_extensions import Self, dataclass_transform
 
+from .struct import Struct, subcon
 from .transaction import Transaction, TxOutput
 from .utils import CompactUint
-from .struct import Struct, subcon
-
 
 PSBT_PROPRIETARY_BYTE = 0xFC
 
@@ -54,18 +53,18 @@ class PsbtProprietaryKey(Struct):
     )
 
 
-# fmt: off
-PsbtSequence = c.FocusedSeq("content",
+PsbtSequence = c.FocusedSeq(
+    "content",
     "content" / c.GreedyRange(PsbtKeyValue.SUBCON),
     c.Const(b"\0"),
 )
 
-PsbtEnvelope = c.FocusedSeq("sequences",
+PsbtEnvelope = c.FocusedSeq(
+    "sequences",
     "magic" / c.Const(b"psbt\xff"),
     "sequences" / c.GreedyRange(PsbtSequence),
     c.Terminated,
 )
-# fmt: on
 
 
 class Bip32Field(Struct):

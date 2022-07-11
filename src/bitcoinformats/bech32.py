@@ -24,8 +24,8 @@ from __future__ import annotations
 Modified to support Bech32M and saner typing properties.
 """
 
-from enum import IntEnum
 import typing as t
+from enum import IntEnum
 
 HRP_SEPARATOR = "1"
 
@@ -185,7 +185,7 @@ def encode(hrp: str, witver: int, witprog: bytes) -> str:
         decode(hrp, ret)  # check validity
         return ret
     except ValueError as e:
-        raise ValueError(f"failed to encode segwit address") from e
+        raise ValueError("failed to encode segwit address") from e
 
 
 def encode_raw(hrp: str, data: bytes, spec: Encoding = Encoding.BECH32) -> str:

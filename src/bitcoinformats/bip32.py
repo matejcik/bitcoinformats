@@ -1,17 +1,17 @@
 from __future__ import annotations
 
-import hmac
 import hashlib
+import hmac
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
-from typing_extensions import Self
 
 import construct as c
 from ecdsa.curves import SECP256k1
 from ecdsa.ellipticcurve import INFINITY, Point
+from typing_extensions import Self
 
-from .struct import Struct
 from .base58 import b58check_decode, b58check_encode
+from .struct import Struct
 from .utils import hash160
 
 if TYPE_CHECKING:
@@ -23,14 +23,18 @@ HARDENED_FLAG = 0x8000_0000
 def _pub_encode(public_key: Point) -> bytes:
     return public_key.to_bytes("compressed")
 
+
 def _pub_decode(data: bytes) -> Point:
     return Point.from_bytes(SECP256k1, "compressed")
+
 
 def _prv_encode(private_key: int | mpz) -> bytes:
     return int(private_key).to_bytes(32, "big")
 
+
 def _prv_decode(data: bytes) -> int:
     return int.from_bytes(data, "big")
+
 
 def _calculate_pubkey(privkey: int | mpz) -> Point:
     """Calculate the public key from a private key."""

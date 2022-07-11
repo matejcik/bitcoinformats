@@ -1,11 +1,11 @@
 import hashlib
-from dataclasses import field, replace, asdict
+from dataclasses import asdict, field, replace
 from enum import IntEnum
 
 import construct as c
 
-from .utils import CompactUint, ConstFlag, hash256
 from .struct import Struct, subcon
+from .utils import CompactUint, ConstFlag, hash256
 
 
 class HashType(IntEnum):

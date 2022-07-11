@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from hashlib import sha256
+
 from typing_extensions import Protocol, Self
 
-from . import utils, base58, bech32
-from .opcodes import Opcode, build_op_push, extract_op_push, op_number
+from . import base58, bech32, utils
 from .network import Network
+from .opcodes import Opcode, build_op_push, extract_op_push, op_number
 
 
 def version_to_bytes(version: int) -> bytes:

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import typing as t
 import dataclasses
-from typing_extensions import Self, dataclass_transform
+import typing as t
 
 import construct as c
+from typing_extensions import Self, dataclass_transform
 
 
 def subcon(cls: type[Struct]) -> t.Any:

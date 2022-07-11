@@ -1,8 +1,7 @@
 import pytest
 
-from bitcoinformats.bip32 import ExtendedPrivateKey, parse_path, Xpub
 from bitcoinformats.base58 import b58check_decode
-
+from bitcoinformats.bip32 import ExtendedPrivateKey, Xpub, parse_path
 
 SEED = bytes.fromhex("000102030405060708090a0b0c0d0e0f")
 

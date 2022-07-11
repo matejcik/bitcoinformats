@@ -1,7 +1,6 @@
 import pytest
 
-from bitcoinformats import script_type, network
-
+from bitcoinformats import network, script_type
 
 ROUNDTRIP_VECTORS = (  # script class, attribute name, attribute value
     (script_type.P2PK, "pubkey", b"\x00" * 33),

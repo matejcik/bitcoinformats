@@ -21,17 +21,41 @@ def hash160(data: bytes) -> bytes:
     return hashlib.new("ripemd160", hashlib.sha256(data).digest()).digest()
 
 
-CompactUintStruct = c.Struct(
+def ConstFlag(const: bytes) -> c.Construct:
+    """Constant value that might or might not be present.
+
+    When parsing, if the appropriate value is found, it is consumed and
+    this field set to True.
+    When building, if True, the constant is inserted, otherwise it is omitted.
+    """
+
+    class Adapter(c.Adapter):
+        def _encode(self, obj, context, path):
+            return const if obj else None
+
+        def _decode(self, obj, context, path):
+            return obj is not None
+
+    subcon = c.IfThenElse(
+        c.this._building,
+        c.Select(c.Bytes(len(const)), c.Pass),
+        c.Optional(c.Const(const)),  # type: ignore /mismatch of Const type to the outer type?/
+    )
+
+    return Adapter(subcon)
+
+
+_CompactUintStruct = c.Struct(
     "base" / c.Int8ul,
     "ext" / c.Switch(c.this.base, {0xFD: c.Int16ul, 0xFE: c.Int32ul, 0xFF: c.Int64ul}),
 )
 """Struct for Bitcoin's Compact uint / varint"""
 
 
-class CompactUintAdapter(c.Adapter):
+class _CompactUintAdapter(c.Adapter):
     """Adapter for Bitcoin's Compact uint / varint"""
 
-    def _encode(self, obj, context, path):
+    def _encode(self, obj: int, context, path):
         if obj < 0xFD:
             return {"base": obj, "ext": None}
         if obj < 2**16:
@@ -42,36 +66,11 @@ class CompactUintAdapter(c.Adapter):
             return {"base": 0xFF, "ext": obj}
         raise ValueError("Value too big for compact uint")
 
-    def _decode(self, obj, context, path):
+    def _decode(self, obj: c.Container, context, path):
         return obj["ext"] or obj["base"]
 
 
-class ConstFlag(c.Adapter):
-    """Constant value that might or might not be present.
-
-    When parsing, if the appropriate value is found, it is consumed and
-    this field set to True.
-    When building, if True, the constant is inserted, otherwise it is omitted.
-    """
-
-    def __init__(self, const):
-        self.const = const
-        super().__init__(
-            c.IfThenElse(
-                c.this._building,
-                c.Select(c.Bytes(len(self.const)), c.Pass),
-                c.Optional(c.Const(const)),
-            )
-        )
-
-    def _encode(self, obj, context, path):
-        return self.const if obj else None
-
-    def _decode(self, obj, context, path):
-        return obj is not None
-
-
-CompactUint = CompactUintAdapter(CompactUintStruct)
+CompactUint = _CompactUintAdapter(_CompactUintStruct)
 """Bitcoin Compact uint construct.
 
 Encodes an int as either:

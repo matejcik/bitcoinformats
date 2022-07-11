@@ -28,6 +28,7 @@ typing-extensions = "^4.1.1"
 autoflake = "^1.4"
 black = "^22.6.0"
 pytest = ">=5"
+pyright = { version = "^1.1.258", python = ">=3.7" }
 construct-typing = { version = "^0.5.2", python = ">=3.7" }
 flake8 = "^4.0.1"
 isort = "^5.10.1"

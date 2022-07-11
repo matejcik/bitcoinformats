@@ -103,7 +103,7 @@ def field(
 
 @dataclass_transform(field_specifiers=(field,))
 class PsbtMapType:
-    _fields: dict[int, tuple[str, Field]] = {}
+    _fields: t.ClassVar[dict[int, tuple[str, Field]]] = {}
 
     def __init__(self, **kwargs: t.Any) -> None:
         self._proprietary: dict[str, dict[tuple[int, bytes], t.Any]] = {}

@@ -17,7 +17,7 @@ class _StructMeta(type):
         cls, name: str, bases: tuple[type, ...], namespace: dict[str, t.Any]
     ) -> type:
         new_cls = super().__new__(cls, name, bases, namespace)
-        return dataclasses.dataclass()(new_cls)
+        return dataclasses.dataclass()(new_cls)  # type: ignore /pyright is bad with metaclasses/
 
 
 class Struct(metaclass=_StructMeta):

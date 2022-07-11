@@ -54,7 +54,7 @@ clean-test: ## remove test and coverage artifacts
 	rm -fr .pytest_cache
 
 test: ## run tests quickly with the default Python
-	py.test
+	pytest
 
 test-all: ## run tests on every Python version with tox
 	tox
@@ -84,7 +84,7 @@ dist: clean ## builds source and wheel package
 
 style:
 	black $(STYLE_TARGETS)
-	isort --apply --recursive $(STYLE_TARGETS) --skip-glob "*/$(EXCLUDE_TARGETS)/*"
+	isort $(STYLE_TARGETS) --skip-glob "*/$(EXCLUDE_TARGETS)/*"
 	autoflake -i --remove-all-unused-imports -r $(STYLE_TARGETS) --exclude "$(EXCLUDE_TARGETS)"
 
 style_check:

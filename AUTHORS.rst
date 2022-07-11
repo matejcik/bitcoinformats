@@ -5,7 +5,7 @@ Credits
 Development Lead
 ----------------
 
-* Jan "matejcik" Matějek <jan.matejek@satoshilabs.com>
+* Jan "matejcik" Matějek <ja@matejcik.cz>
 
 Contributors
 ------------

@@ -5,29 +5,32 @@ authors = ["matejcik <ja@matejcik.cz>"]
 classifiers = [
   "Development Status :: 2 - Pre-Alpha",
   "Intended Audience :: Developers",
-  "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+  "License :: OSI Approved :: MIT License",
   "Natural Language :: English",
   "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.6",
+  "Programming Language :: Python :: 3.7",
   "Programming Language :: Python :: 3.8",
   "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
 ]
 description = "Collection of Bitcoin utilities"
-license = "GPL-3.0-or-later"
+license = "MIT"
 
 [tool.poetry.dependencies]
-click = ">=8,<9"
 construct = ">=2.10"
 ecdsa = "^0.17.0"
-gmpy2 = ">=2.1.2"
-python = ">=3.8,<4"
+python = ">=3.6.2,<4"
 typing-extensions = "^4.1.1"
 
 [tool.poetry.dev-dependencies]
 autoflake = "^1.4"
-black = {version = "^22.3.0", allow-prereleases = true}
-pytest = "^7.1.1"
-construct-typing = "^0.5.2"
+black = "^22.6.0"
+pytest = ">=5"
+construct-typing = { version = "^0.5.2", python = ">=3.7" }
+flake8 = "^4.0.1"
+isort = "^5.10.1"
 
 [build-system]
 build-backend = "poetry.core.masonry.api"

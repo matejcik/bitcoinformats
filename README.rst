@@ -20,15 +20,15 @@ Collection of Bitcoin functionalities for Python.
 Installing
 ----------
 
-Refer to the `installation guide`_.
+Install using pip:
 
-.. _`installation guide`: docs/installation.rst
+    $ pip install bitcoinformats
 
 
 Footer
 ------
 
-* Free software: GNU General Public License v3
+* Free software: MIT License
 * Documentation: https://bitcoinformats.readthedocs.io.
 * This package was created with Cookiecutter_ and the
   `audreyr/cookiecutter-pypackage`_ project template.

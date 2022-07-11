@@ -89,5 +89,5 @@ style:
 
 style_check:
 	black --check $(STYLE_TARGETS)
-	isort --diff --check-only --recursive $(STYLE_TARGETS) --skip-glob "*/$(EXCLUDE_TARGETS)/*"
-	flake8
+	isort --diff --check-only $(STYLE_TARGETS) --skip-glob "*/$(EXCLUDE_TARGETS)/*"
+	flake8 $(STYLE_TARGETS) --exclude "$(EXCLUDE_TARGETS)"

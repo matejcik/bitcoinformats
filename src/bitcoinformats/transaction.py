@@ -5,7 +5,7 @@ from enum import IntEnum
 import construct as c
 
 from .struct import Struct, subcon
-from .utils import CompactUint, ConstFlag, hash256
+from .utils import CompactUint, ConstFlag, hash256, BitcoinBytes, TxHash
 
 
 class HashType(IntEnum):
@@ -17,26 +17,16 @@ class HashType(IntEnum):
     SIGHASH_ANYONECANPAY = 0x80
 
 
-BitcoinBytes = c.Prefixed(CompactUint, c.GreedyBytes)
-"""Bitcoin string of bytes.
-
-Encoded as a CompactUint length followed by that many bytes.
-"""
-
-TxHash = c.Transformed(c.Bytes(32), lambda b: b[::-1], 32, lambda b: b[::-1], 32)
-"""Transaction hash, encoded as a reversed sequence of bytes."""
-
-
 class TxInput(Struct):
     """Transaction input."""
 
-    tx: bytes
+    prev_tx: bytes
     index: int
     script_sig: bytes
     sequence: int
 
     SUBCON = c.Struct(
-        "tx" / TxHash,
+        "prev_tx" / TxHash,
         "index" / c.Int32ul,
         "script_sig" / BitcoinBytes,
         "sequence" / c.Int32ul,
@@ -65,7 +55,7 @@ class Transaction(Struct):
 
     version: int
     segwit: bool
-    lock_time: int
+    locktime: int
     inputs: list[TxInput] = subcon(TxInput)
     outputs: list[TxOutput] = subcon(TxOutput)
     witness: list[bytes] = field(default_factory=list)
@@ -76,7 +66,7 @@ class Transaction(Struct):
         "inputs" / c.PrefixedArray(CompactUint, TxInput.SUBCON),
         "outputs" / c.PrefixedArray(CompactUint, TxOutput.SUBCON),
         "witness" / c.If(c.this.segwit, TxInputWitness[c.len_(c.this.inputs)]),
-        "lock_time" / c.Int32ul,
+        "locktime" / c.Int32ul,
         c.Terminated,
     )
 
@@ -116,7 +106,7 @@ class Transaction(Struct):
         hash.update(hash_sequence.digest())
 
         # 4. outpoint
-        hash.update(selected_input.tx)
+        hash.update(selected_input.prev_tx)
         hash.update(selected_input.index.to_bytes(4, "little"))
 
         # 5. scriptCode of the input
@@ -135,7 +125,7 @@ class Transaction(Struct):
         hash.update(hash_outputs.digest())
 
         # 9. nLocktime
-        hash.update(self.lock_time.to_bytes(4, "little"))
+        hash.update(self.locktime.to_bytes(4, "little"))
 
         # 10. hashType
         hash.update(hash_type.value.to_bytes(4, "little"))

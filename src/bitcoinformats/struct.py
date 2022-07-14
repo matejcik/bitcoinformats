@@ -11,7 +11,7 @@ def subcon(cls: type[Struct]) -> t.Any:
     return dataclasses.field(metadata={"substruct": cls})
 
 
-@dataclass_transform(field_specifiers=(subcon,))
+@dataclass_transform(field_descriptors=(subcon,))
 class _StructMeta(type):
     def __new__(
         cls, name: str, bases: tuple[type, ...], namespace: dict[str, t.Any]
@@ -21,7 +21,7 @@ class _StructMeta(type):
 
 
 class Struct(metaclass=_StructMeta):
-    SUBCON: t.ClassVar[c.Struct]
+    SUBCON: t.ClassVar[c.Construct[c.Container[t.Any], t.Dict[str, t.Any]]]
 
     def build(self) -> bytes:
         return self.SUBCON.build(dataclasses.asdict(self))

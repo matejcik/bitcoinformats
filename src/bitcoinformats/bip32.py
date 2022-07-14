@@ -15,7 +15,7 @@ from .struct import Struct
 from .utils import hash160
 
 if TYPE_CHECKING:
-    from gmpy2 import mpz
+    from gmpy2 import mpz  # type: ignore  /mpz is an extra/
 
 HARDENED_FLAG = 0x8000_0000
 

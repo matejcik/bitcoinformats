@@ -79,3 +79,12 @@ Encodes an int as either:
 - 0xFE + uint32 if the value fits into uint32
 - 0xFF + uint64 if the value is bigger.
 """
+
+BitcoinBytes = c.Prefixed(CompactUint, c.GreedyBytes)
+"""Bitcoin string of bytes.
+
+Encoded as a CompactUint length followed by that many bytes.
+"""
+
+TxHash = c.Transformed(c.Bytes(32), lambda b: b[::-1], 32, lambda b: b[::-1], 32)
+"""Transaction hash, encoded as a reversed sequence of bytes."""

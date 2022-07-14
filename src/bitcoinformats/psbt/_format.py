@@ -2,17 +2,14 @@ import typing as t
 import warnings
 
 import construct as c
-from typing_extensions import Self, dataclass_transform
+from typing_extensions import dataclass_transform, Self
 
-from .struct import Struct, subcon
-from .transaction import Transaction, TxOutput
-from .utils import CompactUint
+from ..struct import Struct, subcon
+from ..utils import CompactUint
+
+from .error import PsbtError
 
 PSBT_PROPRIETARY_BYTE = 0xFC
-
-
-class PsbtError(Exception):
-    pass
 
 
 class PsbtKey(Struct):
@@ -23,7 +20,7 @@ class PsbtKey(Struct):
 
     SUBCON = c.Struct(
         "type" / CompactUint,
-        "key" / c.GreedyBytes,
+        "data" / c.GreedyBytes,
     )
 
 
@@ -67,19 +64,7 @@ PsbtEnvelope = c.FocusedSeq(
 )
 
 
-class Bip32Field(Struct):
-    """BIP32 field."""
-
-    fingerprint: bytes
-    address_n: list[int]
-
-    SUBCON = c.Struct(
-        "fingerprint" / c.Bytes(4),
-        "address_n" / c.GreedyRange(c.Int32ul),
-    )
-
-
-class Field:
+class KeyType:
     def __init__(
         self,
         id: int,
@@ -92,18 +77,18 @@ class Field:
         self.value = value
 
 
-def field(
+def keytype(
     id: int,
     *,
     key: type[bytes] | type[Struct] | c.Construct | None = None,
     value: type[bytes] | type[Struct] | c.Construct = bytes,
 ) -> t.Any:
-    return Field(id, key=key, value=value)
+    return KeyType(id, key=key, value=value)
 
 
-@dataclass_transform(field_specifiers=(field,))
+@dataclass_transform(field_descriptors=(keytype,))
 class PsbtMapType:
-    _fields: t.ClassVar[dict[int, tuple[str, Field]]] = {}
+    _fields: t.ClassVar[dict[int, tuple[str, KeyType]]] = None  # type: ignore /subclasses will correctly override/
 
     def __init__(self, **kwargs: t.Any) -> None:
         self._proprietary: dict[str, dict[tuple[int, bytes], t.Any]] = {}
@@ -116,7 +101,7 @@ class PsbtMapType:
             if arg not in names:
                 raise TypeError(f"Unknown field: {arg}")
             if names[arg].key is not None and not isinstance(value, dict):
-                raise PsbtError("must supply dict for multi-key fields")
+                raise TypeError("must supply dict for multi-key fields")
             setattr(self, arg, value)
 
         # process rest of fields
@@ -129,10 +114,11 @@ class PsbtMapType:
                 setattr(self, name, {})
 
     @classmethod
-    def _collect_fields(cls) -> dict[int, tuple[str, Field]]:
+    def _collect_fields(cls) -> dict[int, tuple[str, KeyType]]:
         if not cls._fields:
+            cls._fields = {}
             for key, value in cls.__dict__.items():
-                if not isinstance(value, Field):
+                if not isinstance(value, KeyType):
                     continue
                 cls._fields[value.id] = (key, value)
         return cls._fields
@@ -140,7 +126,7 @@ class PsbtMapType:
     def __repr__(self) -> str:
         d = {}
         for key, value in self.__dict__.items():
-            if value.startswith("_"):
+            if key.startswith("_"):
                 continue
             if value is None or value == {}:
                 continue
@@ -249,63 +235,3 @@ class PsbtMapType:
 
         sequence.extend(self._unknown)
         return sequence
-
-
-class PsbtGlobalType(PsbtMapType):
-    transaction: Transaction = field(0x00, value=Transaction)
-    global_xpub: bytes = field(0x01, value=bytes)
-    version: int = field(0x02, value=c.Int32ul)
-
-
-class PsbtInputType(PsbtMapType):
-    non_witnes_utxo: Transaction = field(0x00, value=Transaction)
-    witness_utxo: TxOutput = field(0x01, value=TxOutput)
-    signature: bytes = field(0x02, key=bytes, value=bytes)
-    sighash_type: int = field(0x03, value=c.Int32ul)
-    redeem_script: bytes = field(0x04, value=bytes)
-    witness_script: bytes = field(0x05, value=bytes)
-    bip32_path: Bip32Field = field(0x06, key=bytes, value=Bip32Field)
-    script_sig: bytes = field(0x07, value=bytes)
-    witness: bytes = field(0x08, value=bytes)
-    por_commitment: str = field(0x09, value=c.GreedyString("utf8"))
-
-
-class PsbtOutputType(PsbtMapType):
-    redeem_script: bytes = field(0x00, value=bytes)
-    witness: bytes = field(0x01, value=bytes)
-    bip32_path: Bip32Field = field(0x02, key=bytes, value=Bip32Field)
-
-
-def read_psbt(
-    psbt_bytes: bytes,
-) -> tuple[PsbtGlobalType, list[PsbtInputType], list[PsbtOutputType]]:
-    try:
-        psbt = PsbtEnvelope.parse(psbt_bytes)
-        if not psbt:
-            raise PsbtError("Empty PSBT envelope")
-        main = PsbtGlobalType.from_sequence(psbt[0])
-        tx = main.transaction
-        if len(psbt) != 1 + len(tx.inputs) + len(tx.outputs):
-            raise PsbtError("PSBT length does not match embedded transaction")
-
-        input_seqs = psbt[1 : 1 + len(tx.inputs)]
-        output_seqs = psbt[1 + len(tx.inputs) :]
-        inputs = [PsbtInputType.from_sequence(s) for s in input_seqs]
-        outputs = [PsbtOutputType.from_sequence(s) for s in output_seqs]
-        return main, inputs, outputs
-
-    except c.ConstructError as e:
-        raise PsbtError("Could not parse PBST") from e
-
-
-def write_psbt(
-    main: PsbtGlobalType,
-    inputs: t.Sequence[PsbtInputType],
-    outputs: t.Sequence[PsbtOutputType],
-) -> bytes:
-    sequences = (
-        [main.to_sequence()]
-        + [inp.to_sequence() for inp in inputs]
-        + [out.to_sequence() for out in outputs]
-    )
-    return PsbtEnvelope.build(sequences)

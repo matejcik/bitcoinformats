@@ -1,0 +1,2 @@
+class PsbtError(Exception):
+    pass

@@ -33,7 +33,7 @@ class Struct(metaclass=_StructMeta):
         return item
 
     @classmethod
-    def from_parsed(cls: type[Self], data: c.Container) -> Self:
+    def from_parsed(cls, data: c.Container) -> Self:
         del data["_io"]
         for field in dataclasses.fields(cls):
             subcls = field.metadata.get("substruct")
@@ -57,6 +57,6 @@ class Struct(metaclass=_StructMeta):
         return cls(**data)
 
     @classmethod
-    def parse(cls: type[Self], data: bytes) -> Self:
+    def parse(cls, data: bytes) -> Self:
         result = cls.SUBCON.parse(data)
         return cls.from_parsed(result)

@@ -181,7 +181,7 @@ class P2SH(Script):
     @classmethod
     def from_pubkey_p2wpkh(cls, pubkey: bytes) -> Self:
         assert pubkey[0] != 4, "uncompressed pubkey"
-        return cls.from_scriptpubkey(P2WPKH.from_pubkey(pubkey).to_scriptpubkey())
+        return cls.from_script(P2WPKH.from_pubkey(pubkey).to_scriptpubkey())
 
     @classmethod
     def from_scriptpubkey(cls, script: bytes) -> Self:

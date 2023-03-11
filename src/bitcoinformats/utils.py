@@ -5,6 +5,9 @@ import hashlib
 import construct as c
 
 
+from ._ripemd160 import ripemd160
+
+
 def hash256(data: bytes) -> bytes:
     """Perform OP_HASH256.
 
@@ -18,7 +21,7 @@ def hash160(data: bytes) -> bytes:
 
     Hashes the data with SHA256 and then RIPEMD160.
     """
-    return hashlib.new("ripemd160", hashlib.sha256(data).digest()).digest()
+    return ripemd160(hashlib.sha256(data).digest())
 
 
 def ConstFlag(const: bytes) -> c.Construct:

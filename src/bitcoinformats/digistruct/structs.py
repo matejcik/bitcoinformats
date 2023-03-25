@@ -3,19 +3,23 @@ import sys
 import typing as t
 import warnings
 
+from .arrays import ArraySpec
 from .fields import Field
-from .field_specifiers import _internal, field, InternalValue
+from .field_specifiers import _internal, field, INTERNAL_VALUE
 from .exceptions import DeconstructError
 
-
-if t.TYPE_CHECKING:
-    from typing_extensions import Self, dataclass_transform
-else:
-    _identity = lambda x: x
-    dataclass_transform = lambda *args, **kwargs: _identity
+from typing_extensions import (
+    Self,
+    dataclass_transform,
+    get_origin,
+    get_args,
+    get_type_hints,
+)
 
 
 T = t.TypeVar("T")
+
+__all__ = ["Spec", "StructInfo", "Struct", "Adapter"]
 
 
 def safe_issubclass(
@@ -34,9 +38,31 @@ class Spec:
     def _get_type_hints(owner: type) -> t.Dict[str, t.Any]:
         # get_type_hints dumbly returns all hints for all baseclasses ever
         # but we only want this one class
-        all_hints = t.get_type_hints(owner)
+        all_hints = get_type_hints(owner, include_extras=True)
         # so we filter it out by looking into __annotations__
         return {k: v for k, v in all_hints.items() if k in owner.__annotations__}
+
+    @staticmethod
+    def _get_field_type(field: t.Any, value: t.Any) -> t.Optional[Field]:
+        if value is INTERNAL_VALUE:
+            return None
+
+        origin = get_origin(field)
+        args = get_args(field)
+        if origin is t.ClassVar:
+            return None
+        if origin is t.Annotated:
+            return Spec._get_field_type(args[1], value)
+        if origin in (list, t.List):
+            assert isinstance(value, ArraySpec)
+            return value.make_field(args[0])
+        if safe_issubclass(field, Adapter):
+            return AdapterField(field)
+        elif safe_issubclass(field, Struct):
+            return StructField(field)
+        if isinstance(field, Field):
+            return field
+        raise TypeError("Unrecognized field type")
 
     @classmethod
     def _extract_fields(cls, owner: t.Type["Struct"]) -> t.Dict[str, Field]:
@@ -56,33 +82,19 @@ class Spec:
 
         annotations = cls._get_type_hints(owner)
         for name, field in annotations.items():
-            if getattr(field, "__origin__", None) is t.ClassVar:
+            value = getattr(owner, name, None)
+            field_type = cls._get_field_type(field, value)
+            if field_type is None:
                 continue
 
-            declared_value = getattr(owner, name, None)
-            if isinstance(declared_value, InternalValue):
-                setattr(owner, name, declared_value.value)
-                continue
-
-            if getattr(field, "__origin__", None) in (list, t.List):
-                if declared_value is None:
-                    raise DeconstructError(
-                        f"Array spec for list field {name!r} not found."
-                    )
-                field = field.__args__[0]
-
-            if not safe_issubclass(field, Field):
-                raise DeconstructError(
-                    f"Structs can only contain fields (found {field!r})."
-                )
-            fields[name] = field()
+            fields[name] = field_type
 
         return fields
 
     def decorate_owner(self) -> None:
-        for name, field in self.fields.items():
-            setattr(self.owner, name, field)
-            field.__set_name__(self.owner, name)
+        for name, _ in self.fields.items():
+            if hasattr(self.owner, name):
+                delattr(self.owner, name)
         setattr(self.owner, "_spec", self)
 
     def populate(self, instance: "Struct", kwargs: t.Dict[str, t.Any]) -> None:
@@ -145,6 +157,49 @@ class Struct:
         return total
 
 
-U = t.TypeVar("U")
+S = t.TypeVar("S", bound=Struct)
 
-__all__ = ["Spec", "StructInfo", "Struct"]
+
+class StructField(Field[S]):
+    def __init__(self, struct: t.Type[S]) -> None:
+        self.struct = struct
+
+    def parse_from(self, stream: io.BufferedIOBase) -> S:
+        return self.struct.stream_parse(stream)
+
+    def build_into(self, stream: io.BufferedIOBase, value: S) -> None:
+        value.stream_build(stream)
+
+    def sizeof(self, value: S) -> int:
+        return value.sizeof()
+
+
+class Adapter(Struct, t.Generic[T]):
+    def __get__(self, instance: t.Any, owner: t.Any) -> "t.Union[Self, T]":
+        raise RuntimeError("Adapter should not be used as a descriptor.")
+
+    def __set__(self, instance: t.Any, value: T) -> None:
+        raise RuntimeError("Adapter should not be used as a descriptor.")
+
+    @classmethod
+    def encode(cls, value: T) -> "Self":
+        raise NotImplementedError
+
+    def decode(self) -> T:
+        raise NotImplementedError
+
+
+class AdapterField(Field[T]):
+    def __init__(self, adapter: t.Type[Adapter[T]]) -> None:
+        self.adapter = adapter
+
+    def build_into(self, stream: io.BufferedIOBase, value: T) -> None:
+        actual_type = self.adapter.encode(value)
+        actual_type.stream_build(stream)
+
+    def parse_from(self, stream: io.BufferedIOBase) -> T:
+        actual_type = self.adapter.stream_parse(stream)
+        return actual_type.decode()
+
+    def sizeof(self, value: T) -> int:
+        return self.adapter.encode(value).sizeof()

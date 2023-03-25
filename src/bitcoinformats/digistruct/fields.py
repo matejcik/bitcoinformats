@@ -22,35 +22,6 @@ __all__ = [
 
 
 class Field(t.Generic[T]):
-    _internal_name: str = _internal()
-
-    def __set_name__(self, _owner: t.Any, name: str) -> None:
-        self._internal_name = name
-
-    @t.overload
-    def __get__(self, instance: None, _owner: t.Any = None) -> "Self":
-        ...
-
-    @t.overload
-    def __get__(self, instance: "Struct", _owner: t.Any = None) -> T:
-        ...
-
-    def __get__(self, instance: t.Any, _owner: t.Any = None) -> t.Union[T, "Self"]:
-        if instance is None:
-            return self
-        return self.get(instance)
-
-    def get(self, instance: t.Any) -> T:
-        return instance.__dict__[self._internal_name]
-
-    def __set__(self, instance: t.Any, value: T) -> None:
-        if instance is None:
-            raise AttributeError("can't set attribute")
-        return self.set(instance, value)
-
-    def set(self, instance: t.Any, value: T) -> None:
-        instance.__dict__[self._internal_name] = value
-
     def build_into(self, stream: io.BufferedIOBase, value: T) -> None:
         raise exceptions.UnsupportedError(
             f"Cannot build field of type {type(self).__name__}."
@@ -66,14 +37,8 @@ class Field(t.Generic[T]):
 
 
 class FormatField(Field[int]):
-    struct: t.ClassVar[struct.Struct]
-
-    @classmethod
-    def make(cls: t.Type, format: str) -> t.Type["FormatField"]:
-        class _FormatField(cls):
-            struct = struct.Struct(format)
-
-        return _FormatField
+    def __init__(self, format: str) -> None:
+        self.struct = struct.Struct(format)
 
     def build_into(self, stream: io.BufferedIOBase, value: int) -> None:
         packed = self.struct.pack(value)
@@ -165,18 +130,3 @@ class StrField(Field[str]):
             return len(value.encode(self.encoding))
         else:
             return self.length
-
-
-class Referent(t.Generic[T]):
-    def __init__(self, field: Field[T], instance: t.Any) -> None:
-        self.field = field
-        self.instance = instance
-
-    def get(self) -> T:
-        return self.field.get(self.instance)
-
-    def set(self, value: T) -> None:
-        self.field.set(self.instance, value)
-
-    def sizeof(self, value: T) -> int:
-        return self.field.sizeof(value)

@@ -6,14 +6,11 @@ __all__ = [
     "auto",
 ]
 
+INTERNAL_VALUE = object()
+
 
 class FieldPlaceholder:
     pass
-
-
-class InternalValue:
-    def __init__(self, value: t.Any) -> None:
-        self.value = value
 
 
 def field(**kwargs) -> t.Any:
@@ -34,5 +31,5 @@ def auto(init: bool = False) -> t.Any:
     return FieldPlaceholder()
 
 
-def _internal(init: t.Literal[False] = False, default: t.Any = None) -> t.Any:
-    return InternalValue(default)
+def _internal(init: t.Literal[False] = False) -> t.Any:
+    return INTERNAL_VALUE

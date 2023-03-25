@@ -2,8 +2,11 @@ import io
 import typing as t
 
 from . import exceptions
-from .fields import Field, Referent
+from .fields import Field
 from .field_specifiers import FieldPlaceholder
+
+if t.TYPE_CHECKING:
+    from .structs import Struct
 
 T = t.TypeVar("T")
 
@@ -14,7 +17,7 @@ __all__ = [
 ]
 
 
-class ArrayPlaceholder:
+class ArraySpec:
     def __init__(
         self,
         array_type: t.Type["Array"],
@@ -32,20 +35,17 @@ class ArrayPlaceholder:
 def array(
     length: t.Union[int, Field[int], None] = None,
     *,
-    prefix: t.Optional[t.Type[Field]] = None,
+    prefix: t.Optional[t.Type[int]] = None,
     byte_size: t.Optional[int] = None,
 ) -> t.Any:
-    def make_array() -> t.Any:
-        if length is None and prefix is None and byte_size is None:
-            return ArrayPlaceholder(GreedyArray)
-        elif isinstance(length, int):
-            return ArrayPlaceholder(FixedSizeArray, fixed_length=length)
-        elif isinstance(length, FieldPlaceholder):
-            return ArrayPlaceholder(ReferentArray, referent_placeholder=length)
-        else:
-            raise NotImplementedError
-
-    return make_array
+    if length is None and prefix is None and byte_size is None:
+        return ArraySpec(GreedyArray)
+    elif isinstance(length, int):
+        return ArraySpec(FixedSizeArray, fixed_length=length)
+    elif isinstance(length, FieldPlaceholder):
+        return ArraySpec(ReferentArray, referent_placeholder=length)
+    else:
+        raise NotImplementedError
 
 
 class Array(Field[t.List[T]]):

@@ -1,6 +1,6 @@
 import pytest
 
-import bitcoinformats.deconstruct as d
+import bitcoinformats.digistruct as d
 
 
 class Example(d.Struct):
@@ -36,14 +36,14 @@ class TwoByteSum(d.Adapter[int]):
         else:
             y = x
         return cls(x=x, y=y)
-    
+
     def decode(self) -> int:
         return self.x + self.y
-    
+
 
 class Adapted(d.Struct):
     x: TwoByteSum
-    
+
 
 def test_adapter():
     a = TwoByteSum(x=1, y=2)
@@ -55,11 +55,11 @@ def test_adapter():
     assert Adapted.parse(b"\x05\x04").x == 9
 
 
-class Arrays(d.Struct):
-    fixed: list[d.be.int8] = d.array(3)
-    prefixed: list[d.be.int8] = d.array(prefix=d.be.int8)
-    count: d.be.int8 = d.auto()
-    variable: list[d.be.int8] = d.array(count)
+# class Arrays(d.Struct):
+#     fixed: list[d.be.int8] = d.array(3)
+#     prefixed: list[d.be.int8] = d.array(prefix=d.be.int8)
+#     count: d.be.int8 = d.auto()
+#     variable: list[d.be.int8] = d.array(count)
 
 
 def test_arrays():

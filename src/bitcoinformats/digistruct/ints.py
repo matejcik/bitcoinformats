@@ -1,6 +1,6 @@
 from typing_extensions import Annotated
 
-from .fields import FormatField
+from .codecs import BasicCodec
 
 __all__ = [
     "int8",
@@ -18,39 +18,39 @@ __all__ = [
 ]
 
 
-int8 = Annotated[int, FormatField("=b")]
-int16 = Annotated[int, FormatField("=h")]
-int32 = Annotated[int, FormatField("=i")]
-int64 = Annotated[int, FormatField("=q")]
+int8 = Annotated[int, BasicCodec("=b")]
+int16 = Annotated[int, BasicCodec("=h")]
+int32 = Annotated[int, BasicCodec("=i")]
+int64 = Annotated[int, BasicCodec("=q")]
 
-uint8 = Annotated[int, FormatField("=B")]
-uint16 = Annotated[int, FormatField("=H")]
-uint32 = Annotated[int, FormatField("=I")]
-uint64 = Annotated[int, FormatField("=Q")]
+uint8 = Annotated[int, BasicCodec("=B")]
+uint16 = Annotated[int, BasicCodec("=H")]
+uint32 = Annotated[int, BasicCodec("=I")]
+uint64 = Annotated[int, BasicCodec("=Q")]
 
 
 class _BigEndian:
-    int8 = Annotated[int, FormatField(">b")]
-    int16 = Annotated[int, FormatField(">h")]
-    int32 = Annotated[int, FormatField(">i")]
-    int64 = Annotated[int, FormatField(">q")]
+    int8 = Annotated[int, BasicCodec(">b")]
+    int16 = Annotated[int, BasicCodec(">h")]
+    int32 = Annotated[int, BasicCodec(">i")]
+    int64 = Annotated[int, BasicCodec(">q")]
 
-    uint8 = Annotated[int, FormatField(">B")]
-    uint16 = Annotated[int, FormatField(">H")]
-    uint32 = Annotated[int, FormatField(">I")]
-    uint64 = Annotated[int, FormatField(">Q")]
+    uint8 = Annotated[int, BasicCodec(">B")]
+    uint16 = Annotated[int, BasicCodec(">H")]
+    uint32 = Annotated[int, BasicCodec(">I")]
+    uint64 = Annotated[int, BasicCodec(">Q")]
 
 
 class _LittleEndian:
-    int8 = Annotated[int, FormatField("<b")]
-    int16 = Annotated[int, FormatField("<h")]
-    int32 = Annotated[int, FormatField("<i")]
-    int64 = Annotated[int, FormatField("<q")]
+    int8 = Annotated[int, BasicCodec("<b")]
+    int16 = Annotated[int, BasicCodec("<h")]
+    int32 = Annotated[int, BasicCodec("<i")]
+    int64 = Annotated[int, BasicCodec("<q")]
 
-    uint8 = Annotated[int, FormatField("<B")]
-    uint16 = Annotated[int, FormatField("<H")]
-    uint32 = Annotated[int, FormatField("<I")]
-    uint64 = Annotated[int, FormatField("<Q")]
+    uint8 = Annotated[int, BasicCodec("<B")]
+    uint16 = Annotated[int, BasicCodec("<H")]
+    uint32 = Annotated[int, BasicCodec("<I")]
+    uint64 = Annotated[int, BasicCodec("<Q")]
 
 
 be = big = _BigEndian

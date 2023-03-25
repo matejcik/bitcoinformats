@@ -1,5 +1,7 @@
 import typing as t
 
+from . import structs
+
 
 __all__ = [
     "field",
@@ -9,12 +11,8 @@ __all__ = [
 INTERNAL_VALUE = object()
 
 
-class FieldPlaceholder:
-    pass
-
-
 def field(**kwargs) -> t.Any:
-    return FieldPlaceholder()
+    return structs.Field()
 
 
 @t.overload
@@ -28,7 +26,7 @@ def auto(init: bool) -> t.Any:
 
 
 def auto(init: bool = False) -> t.Any:
-    return FieldPlaceholder()
+    return structs.Field()
 
 
 def _internal(init: t.Literal[False] = False) -> t.Any:

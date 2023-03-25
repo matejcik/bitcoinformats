@@ -1,10 +1,8 @@
 import io
-import sys
 import typing as t
-import warnings
+import dataclasses
 
-from .arrays import ArraySpec
-from .fields import Field
+from . import arrays, codecs
 from .field_specifiers import _internal, field, INTERNAL_VALUE
 from .exceptions import DeconstructError
 
@@ -20,6 +18,41 @@ from typing_extensions import (
 T = t.TypeVar("T")
 
 __all__ = ["Spec", "StructInfo", "Struct", "Adapter"]
+
+
+@dataclasses.dataclass(init=False)
+class Field(t.Generic[T]):
+    name: t.Optional[str]
+    codec: t.Optional[codecs.Codec[T]]
+    default: t.Optional[T]
+
+    def getvalue(self, instance: t.Any) -> T:
+        assert self.name is not None
+        return instance.__dict__[self.name]
+
+    def setvalue(self, instance: t.Any, value: T) -> None:
+        assert self.name is not None
+        instance.__dict__[self.name] = value
+
+    def build_into(self, instance: t.Any, stream: io.BufferedIOBase) -> None:
+        assert self.codec is not None
+        self.codec.build_into(stream, self.getvalue(instance))
+
+    def parse_from(self, instance: t.Any, stream: io.BufferedIOBase) -> None:
+        assert self.codec is not None
+        self.setvalue(instance, self.codec.parse_from(stream))
+
+    def __get__(self, instance: t.Any, owner: t.Type[t.Any]) -> t.Union[Self, T]:
+        if instance is None:
+            return self
+        return self.getvalue(instance)
+
+    def __set__(self, instance: t.Any, value: T) -> None:
+        self.setvalue(instance, value)
+
+    def sizeof(self, instance: t.Any) -> int:
+        assert self.codec is not None
+        return self.codec.sizeof(self.getvalue(instance))
 
 
 def safe_issubclass(
@@ -43,26 +76,29 @@ class Spec:
         return {k: v for k, v in all_hints.items() if k in owner.__annotations__}
 
     @staticmethod
-    def _get_field_type(field: t.Any, value: t.Any) -> t.Optional[Field]:
-        if value is INTERNAL_VALUE:
-            return None
-
+    def _extract_codec_type(field: t.Any) -> t.Optional[codecs.Codec]:
         origin = get_origin(field)
         args = get_args(field)
         if origin is t.ClassVar:
             return None
         if origin is t.Annotated:
-            return Spec._get_field_type(args[1], value)
+            return Spec._extract_codec_type(args[1])
         if origin in (list, t.List):
-            assert isinstance(value, ArraySpec)
-            return value.make_field(args[0])
-        if safe_issubclass(field, Adapter):
-            return AdapterField(field)
-        elif safe_issubclass(field, Struct):
-            return StructField(field)
-        if isinstance(field, Field):
+            return Spec._extract_codec_type(args[0])
+        if isinstance(field, codecs.Codec):
             return field
         raise TypeError("Unrecognized field type")
+
+    @staticmethod
+    def _make_field(field: t.Any, value: t.Any) -> t.Optional[Field]:
+        if isinstance(value, Field):
+            return value
+
+        origin = get_origin(field)
+        if origin in (list, t.List):
+            return arrays.GreedyArray()
+        else:
+            return Field()
 
     @classmethod
     def _extract_fields(cls, owner: t.Type["Struct"]) -> t.Dict[str, Field]:
@@ -81,23 +117,33 @@ class Spec:
             fields.update(parent._spec.fields)
 
         annotations = cls._get_type_hints(owner)
-        for name, field in annotations.items():
+        for name, field_type in annotations.items():
+            codec = cls._extract_codec_type(field_type)
+            if codec is None:
+                continue
             value = getattr(owner, name, None)
-            field_type = cls._get_field_type(field, value)
-            if field_type is None:
+            if value is INTERNAL_VALUE:
+                continue
+            field = cls._make_field(field_type, value)
+            if field is None:
                 continue
 
-            fields[name] = field_type
+            field.name = name
+            field.codec = codec
+            if not isinstance(value, Field):
+                field.default = value
+
+            fields[name] = field
 
         return fields
 
     def decorate_owner(self) -> None:
-        for name, _ in self.fields.items():
-            if hasattr(self.owner, name):
-                delattr(self.owner, name)
+        for name, field in self.fields.items():
+            setattr(self.owner, name, field)
         setattr(self.owner, "_spec", self)
 
     def populate(self, instance: "Struct", kwargs: t.Dict[str, t.Any]) -> None:
+        # TODO handle defaults
         for name, value in kwargs.items():
             if name not in self.fields:
                 raise TypeError(f"Unexpected keyword argument {name!r}")
@@ -131,8 +177,8 @@ class Struct:
     @classmethod
     def stream_parse(cls, stream: io.BufferedIOBase) -> "Self":
         instance = cls.__new__(cls)
-        for name, field in cls._spec.fields.items():
-            setattr(instance, name, field.parse_from(stream))
+        for field in cls._spec.fields.values():
+            field.parse_from(instance, stream)
         return instance
 
     @classmethod
@@ -141,45 +187,40 @@ class Struct:
         return cls.stream_parse(inbuf)
 
     def stream_build(self, stream: io.BufferedIOBase) -> None:
-        for name, field in self._spec.fields.items():
-            field.build_into(stream, getattr(self, name))
+        for field in self._spec.fields.values():
+            field.build_into(self, stream)
 
     def build(self) -> bytes:
         outbuf = io.BytesIO()
         self.stream_build(outbuf)
         return outbuf.getvalue()
 
-    def sizeof(self) -> int:
-        total = 0
-        for name, field in self._spec.fields.items():
-            value = getattr(self, name)
-            total += field.sizeof(value)
-        return total
+    # codec protocol methods
+    @classmethod
+    def build_into(cls, stream: io.BufferedIOBase, value: "Self") -> None:
+        value.stream_build(stream)
+
+    @classmethod
+    def parse_from(cls, stream: io.BufferedIOBase) -> "Self":
+        return cls.stream_parse(stream)
+
+    @classmethod
+    def sizeof(cls, value: "Self") -> int:
+        # TODO calculate this without building
+        return len(value.build())
 
 
 S = t.TypeVar("S", bound=Struct)
 
 
-class StructField(Field[S]):
-    def __init__(self, struct: t.Type[S]) -> None:
-        self.struct = struct
-
-    def parse_from(self, stream: io.BufferedIOBase) -> S:
-        return self.struct.stream_parse(stream)
-
-    def build_into(self, stream: io.BufferedIOBase, value: S) -> None:
-        value.stream_build(stream)
-
-    def sizeof(self, value: S) -> int:
-        return value.sizeof()
-
-
 class Adapter(Struct, t.Generic[T]):
-    def __get__(self, instance: t.Any, owner: t.Any) -> "t.Union[Self, T]":
-        raise RuntimeError("Adapter should not be used as a descriptor.")
+    if t.TYPE_CHECKING:
 
-    def __set__(self, instance: t.Any, value: T) -> None:
-        raise RuntimeError("Adapter should not be used as a descriptor.")
+        def __get__(self, instance: t.Any, owner: t.Any) -> "t.Union[Self, T]":
+            ...
+
+        def __set__(self, instance: t.Any, value: T) -> None:
+            ...
 
     @classmethod
     def encode(cls, value: T) -> "Self":
@@ -188,18 +229,16 @@ class Adapter(Struct, t.Generic[T]):
     def decode(self) -> T:
         raise NotImplementedError
 
-
-class AdapterField(Field[T]):
-    def __init__(self, adapter: t.Type[Adapter[T]]) -> None:
-        self.adapter = adapter
-
-    def build_into(self, stream: io.BufferedIOBase, value: T) -> None:
-        actual_type = self.adapter.encode(value)
+    @classmethod
+    def build_into(cls, stream: io.BufferedIOBase, value: T) -> None:
+        actual_type = cls.encode(value)
         actual_type.stream_build(stream)
 
-    def parse_from(self, stream: io.BufferedIOBase) -> T:
-        actual_type = self.adapter.stream_parse(stream)
+    @classmethod
+    def parse_from(cls, stream: io.BufferedIOBase) -> T:
+        actual_type = cls.stream_parse(stream)
         return actual_type.decode()
 
-    def sizeof(self, value: T) -> int:
-        return self.adapter.encode(value).sizeof()
+    @classmethod
+    def sizeof(cls, value: T) -> int:
+        return cls.sizeof(cls.encode(value))

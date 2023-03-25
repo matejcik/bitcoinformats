@@ -3,40 +3,30 @@ import struct
 import typing as t
 
 from . import exceptions
-from .field_specifiers import _internal
-
-if t.TYPE_CHECKING:
-    from typing_extensions import Self
-
-    from .structs import Struct
-
 
 T = t.TypeVar("T")
 
 __all__ = [
-    "Field",
-    "FormatField",
-    "BytesField",
-    "StrField",
+    "Codec",
+    "BasicCodec",
+    "BytesCodec",
+    "StrCodec",
 ]
 
 
-class Field(t.Generic[T]):
+@t.runtime_checkable
+class Codec(t.Protocol[T]):
     def build_into(self, stream: io.BufferedIOBase, value: T) -> None:
-        raise exceptions.UnsupportedError(
-            f"Cannot build field of type {type(self).__name__}."
-        )
+        ...
 
     def parse_from(self, stream: io.BufferedIOBase) -> T:
-        raise exceptions.UnsupportedError(
-            f"Cannot parse field of type {type(self).__name__}."
-        )
+        ...
 
     def sizeof(self, value: T) -> int:
-        raise NotImplementedError
+        ...
 
 
-class FormatField(Field[int]):
+class BasicCodec(Codec[int]):
     def __init__(self, format: str) -> None:
         self.struct = struct.Struct(format)
 
@@ -52,37 +42,7 @@ class FormatField(Field[int]):
         return self.struct.size
 
 
-class LimitedField(Field[T]):
-    def __init__(self, inner: Field[T], length: int) -> None:
-        self.inner = inner
-        self.length = length
-
-    def build_into(self, stream: io.BufferedIOBase, value: T) -> None:
-        buf = io.BytesIO()
-        self.inner.build_into(buf, value)
-        if buf.tell() != self.length:
-            raise ValueError(
-                f"Field length mismatch: expected {self.length}, got {buf.tell()}"
-            )
-        stream.write(buf.getvalue())
-
-    def parse_from(self, stream: io.BufferedIOBase) -> T:
-        data = stream.read(self.length)
-        if len(data) != self.length:
-            raise exceptions.EndOfStream
-        buf = io.BytesIO(data)
-        result = self.inner.parse_from(buf)
-        if buf.tell() != self.length:
-            raise exceptions.ParseError(
-                f"Unparsed data at end of field: {self.length - buf.tell()} bytes"
-            )
-        return result
-
-    def sizeof(self, value: T) -> int:
-        return self.length
-
-
-class BytesField(Field[bytes]):
+class BytesCodec(Codec[bytes]):
     def __init__(self, length: t.Optional[int] = None) -> None:
         self.length = length
 
@@ -102,7 +62,7 @@ class BytesField(Field[bytes]):
         return len(value)
 
 
-class StrField(Field[str]):
+class StrCodec(Codec[str]):
     def __init__(self, length: t.Optional[int] = None, encoding: str = "utf-8") -> None:
         self.length = length
         self.encoding = encoding

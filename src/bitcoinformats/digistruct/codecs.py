@@ -3,27 +3,9 @@ import struct
 import typing as t
 
 from . import exceptions
+from .base import Codec
 
 T = t.TypeVar("T")
-
-__all__ = [
-    "Codec",
-    "BasicCodec",
-    "BytesCodec",
-    "StrCodec",
-]
-
-
-@t.runtime_checkable
-class Codec(t.Protocol[T]):
-    def build_into(self, stream: io.BufferedIOBase, value: T) -> None:
-        ...
-
-    def parse_from(self, stream: io.BufferedIOBase) -> T:
-        ...
-
-    def sizeof(self, value: T) -> int:
-        ...
 
 
 class BasicCodec(Codec[int]):

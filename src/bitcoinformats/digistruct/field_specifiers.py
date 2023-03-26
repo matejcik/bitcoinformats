@@ -27,7 +27,3 @@ def auto(init: bool) -> t.Any:
 
 def auto(init: bool = False) -> t.Any:
     return structs.Field()
-
-
-def _internal(init: t.Literal[False] = False) -> t.Any:
-    return INTERNAL_VALUE

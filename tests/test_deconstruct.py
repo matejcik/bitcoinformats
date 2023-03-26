@@ -57,12 +57,13 @@ def test_adapter():
 
 class Arrays(d.Struct):
     fixed: list[d.be.int8] = d.array(3)
+    prefixed: list[d.be.int8] = d.array(prefix=d.be.int8)
     count: d.be.int8 = d.auto()
     variable: list[d.be.int8] = d.array(count)
 
 
 def test_arrays():
-    a = Arrays(fixed=[1, 2, 3], variable=[7, 8])
+    a = Arrays(fixed=[1, 2, 3], prefixed=[4, 5, 6], variable=[7, 8])
     assert a.build() == b"\x01\x02\x03\x03\x04\x05\x06\x02\x07\x08"
 
     ap = Arrays.parse(b"\x01\x02\x03\x03\x04\x05\x06\x02\x07\x08")
@@ -72,7 +73,7 @@ def test_arrays():
 
 
 def test_array_variable_zero():
-    a = Arrays(fixed=[1, 2, 3], variable=[])
+    a = Arrays(fixed=[1, 2, 3])
     assert a.build() == b"\x01\x02\x03\x00\x00"
 
     ap = Arrays.parse(b"\x01\x02\x03\x00\x00")
@@ -82,5 +83,5 @@ def test_array_variable_zero():
 
 
 def test_array_wrong_count():
-    with pytest.raises(ValueError):
-        Arrays(fixed=[1, 2, 3, 4], variable=[])
+    with pytest.raises(d.BuildError):
+        Arrays(fixed=[1, 2, 3, 4]).build()

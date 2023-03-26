@@ -1,58 +1,17 @@
 import io
 import typing as t
-import dataclasses
 
-from . import arrays, codecs
-from .field_specifiers import _internal, field, INTERNAL_VALUE
-from .exceptions import DeconstructError
+import typing_extensions as tx
 
-from typing_extensions import (
-    Self,
-    dataclass_transform,
-    get_origin,
-    get_args,
-    get_type_hints,
-)
+from .base import Field, get_type_hints, extract_codec_type, MISSING
+from . import arrays
+from .field_specifiers import field
+from .exceptions import DeconstructError, BuildError
 
 
 T = t.TypeVar("T")
 
 __all__ = ["Spec", "StructInfo", "Struct", "Adapter"]
-
-
-@dataclasses.dataclass(init=False)
-class Field(t.Generic[T]):
-    name: t.Optional[str]
-    codec: t.Optional[codecs.Codec[T]]
-    default: t.Optional[T]
-
-    def getvalue(self, instance: t.Any) -> T:
-        assert self.name is not None
-        return instance.__dict__[self.name]
-
-    def setvalue(self, instance: t.Any, value: T) -> None:
-        assert self.name is not None
-        instance.__dict__[self.name] = value
-
-    def build_into(self, instance: t.Any, stream: io.BufferedIOBase) -> None:
-        assert self.codec is not None
-        self.codec.build_into(stream, self.getvalue(instance))
-
-    def parse_from(self, instance: t.Any, stream: io.BufferedIOBase) -> None:
-        assert self.codec is not None
-        self.setvalue(instance, self.codec.parse_from(stream))
-
-    def __get__(self, instance: t.Any, owner: t.Type[t.Any]) -> t.Union[Self, T]:
-        if instance is None:
-            return self
-        return self.getvalue(instance)
-
-    def __set__(self, instance: t.Any, value: T) -> None:
-        self.setvalue(instance, value)
-
-    def sizeof(self, instance: t.Any) -> int:
-        assert self.codec is not None
-        return self.codec.sizeof(self.getvalue(instance))
 
 
 def safe_issubclass(
@@ -68,33 +27,11 @@ class Spec:
         self.decorate_owner()
 
     @staticmethod
-    def _get_type_hints(owner: type) -> t.Dict[str, t.Any]:
-        # get_type_hints dumbly returns all hints for all baseclasses ever
-        # but we only want this one class
-        all_hints = get_type_hints(owner, include_extras=True)
-        # so we filter it out by looking into __annotations__
-        return {k: v for k, v in all_hints.items() if k in owner.__annotations__}
-
-    @staticmethod
-    def _extract_codec_type(field: t.Any) -> t.Optional[codecs.Codec]:
-        origin = get_origin(field)
-        args = get_args(field)
-        if origin is t.ClassVar:
-            return None
-        if origin is t.Annotated:
-            return Spec._extract_codec_type(args[1])
-        if origin in (list, t.List):
-            return Spec._extract_codec_type(args[0])
-        if isinstance(field, codecs.Codec):
-            return field
-        raise TypeError("Unrecognized field type")
-
-    @staticmethod
     def _make_field(field: t.Any, value: t.Any) -> t.Optional[Field]:
         if isinstance(value, Field):
             return value
 
-        origin = get_origin(field)
+        origin = tx.get_origin(field)
         if origin in (list, t.List):
             return arrays.GreedyArray()
         else:
@@ -116,14 +53,12 @@ class Spec:
             # TODO: is it ok that we use the preexisting instances?
             fields.update(parent._spec.fields)
 
-        annotations = cls._get_type_hints(owner)
+        annotations = get_type_hints(owner)
         for name, field_type in annotations.items():
-            codec = cls._extract_codec_type(field_type)
+            codec = extract_codec_type(field_type)
             if codec is None:
                 continue
-            value = getattr(owner, name, None)
-            if value is INTERNAL_VALUE:
-                continue
+            value = getattr(owner, name, MISSING)
             field = cls._make_field(field_type, value)
             if field is None:
                 continue
@@ -145,9 +80,16 @@ class Spec:
     def populate(self, instance: "Struct", kwargs: t.Dict[str, t.Any]) -> None:
         # TODO handle defaults
         for name, value in kwargs.items():
-            if name not in self.fields:
+            if name not in self.fields or self.fields[name].is_dependent():
                 raise TypeError(f"Unexpected keyword argument {name!r}")
             setattr(instance, name, value)
+        for name, field in self.fields.items():
+            if name not in kwargs:
+                if field.is_dependent():
+                    continue
+                if field.default is MISSING:
+                    raise TypeError(f"Missing required argument {name!r}")
+                setattr(instance, name, field.default)
 
     def as_dict(self, instance: "Struct") -> t.Dict[str, t.Any]:
         return {name: getattr(instance, name) for name in self.fields}
@@ -157,10 +99,10 @@ class StructInfo:
     pass
 
 
-@dataclass_transform(kw_only_default=True, field_specifiers=(field, _internal))
+@tx.dataclass_transform(kw_only_default=True, field_specifiers=(field,))
 class Struct:
     _spec: t.ClassVar[Spec]
-    _struct: StructInfo = _internal()
+    _struct: StructInfo
 
     def __init_subclass__(cls, **kwargs: t.Any) -> None:
         super().__init_subclass__(**kwargs)
@@ -175,20 +117,24 @@ class Struct:
         return self._spec.as_dict(self) == other._spec.as_dict(other)
 
     @classmethod
-    def stream_parse(cls, stream: io.BufferedIOBase) -> "Self":
+    def stream_parse(cls, stream: io.BufferedIOBase) -> tx.Self:
         instance = cls.__new__(cls)
         for field in cls._spec.fields.values():
             field.parse_from(instance, stream)
         return instance
 
     @classmethod
-    def parse(cls, data: bytes) -> "Self":
+    def parse(cls, data: bytes) -> tx.Self:
         inbuf = io.BytesIO(data)
         return cls.stream_parse(inbuf)
 
     def stream_build(self, stream: io.BufferedIOBase) -> None:
         for field in self._spec.fields.values():
-            field.build_into(self, stream)
+            try:
+                field.recalculate(self)
+                field.build_into(self, stream)
+            except Exception as e:
+                raise BuildError(f"Failed to build field {field.name!r}", e) from e
 
     def build(self) -> bytes:
         outbuf = io.BytesIO()
@@ -197,15 +143,15 @@ class Struct:
 
     # codec protocol methods
     @classmethod
-    def build_into(cls, stream: io.BufferedIOBase, value: "Self") -> None:
+    def build_into(cls, stream: io.BufferedIOBase, value: tx.Self) -> None:
         value.stream_build(stream)
 
     @classmethod
-    def parse_from(cls, stream: io.BufferedIOBase) -> "Self":
+    def parse_from(cls, stream: io.BufferedIOBase) -> tx.Self:
         return cls.stream_parse(stream)
 
     @classmethod
-    def sizeof(cls, value: "Self") -> int:
+    def sizeof(cls, value: tx.Self) -> int:
         # TODO calculate this without building
         return len(value.build())
 
@@ -216,14 +162,14 @@ S = t.TypeVar("S", bound=Struct)
 class Adapter(Struct, t.Generic[T]):
     if t.TYPE_CHECKING:
 
-        def __get__(self, instance: t.Any, owner: t.Any) -> "t.Union[Self, T]":
+        def __get__(self, instance: t.Any, owner: t.Any) -> t.Union[tx.Self, T]:
             ...
 
         def __set__(self, instance: t.Any, value: T) -> None:
             ...
 
     @classmethod
-    def encode(cls, value: T) -> "Self":
+    def encode(cls, value: T) -> tx.Self:
         raise NotImplementedError
 
     def decode(self) -> T:

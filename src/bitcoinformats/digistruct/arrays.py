@@ -1,7 +1,8 @@
 import io
 import typing as t
 
-from . import codecs, exceptions, structs
+from .base import Codec, Field, extract_codec_type, DependentRelation
+from . import exceptions
 
 if t.TYPE_CHECKING:
     from typing_extensions import Self
@@ -9,29 +10,69 @@ if t.TYPE_CHECKING:
 T = t.TypeVar("T")
 
 
-__all__ = [
-    "Array",
-    "array",
-]
+__all__ = ["array"]
+
+
+@t.overload
+def array(length: t.Union[int, Field[int], None] = None) -> t.List:
+    ...
+
+
+@t.overload
+def array(*, prefix: t.Type[int]) -> t.List:
+    ...
+
+
+@t.overload
+def array(*, byte_size: int) -> t.List:
+    ...
 
 
 def array(
-    length: t.Union[int, codecs.Codec[int], None] = None,
+    length: t.Union[int, Field[int], None] = None,
     *,
     prefix: t.Optional[t.Type[int]] = None,
     byte_size: t.Optional[int] = None,
 ) -> t.Any:
-    if length is None and prefix is None and byte_size is None:
+    n_args = sum(arg is not None for arg in (length, prefix, byte_size))
+    if n_args == 0:
         return GreedyArray()
-    elif isinstance(length, int):
+
+    if n_args > 1:
+        raise ValueError("Only one of length, prefix, or byte_size may be specified")
+
+    if isinstance(length, int):
         return FixedSizeArray(length)
-    elif isinstance(length, structs.Field):
+
+    if isinstance(length, Field):
         return ReferentArray(length)
-    else:
-        raise NotImplementedError
+
+    if prefix is not None:
+        codec = extract_codec_type(prefix)
+        if codec is None:
+            raise TypeError("prefix must be a codec")
+        return PrefixedArray(codec)
+
+    raise NotImplementedError
 
 
-class Array(structs.Field[T]):
+class Array(Field[T]):
+    _default: t.Iterable[T] = ()
+
+    @property
+    def default(self) -> t.List[T]:
+        return list(self._default)
+
+    @default.setter
+    def default(self, value: t.Any) -> None:
+        if value is None:
+            self._default = ()
+        elif isinstance(value, t.Iterable):
+            # TODO does this actually work?
+            self._default = value
+        else:
+            raise TypeError("array default must be an iterable")
+
     def get_length(self, instance: t.Any) -> int:
         raise NotImplementedError
 
@@ -106,19 +147,47 @@ class FixedSizeArray(Array[T]):
         super().__init__()
         self.length = length
 
-    def get_length(self) -> int:
+    def get_length(self, instance: t.Any) -> int:
         return self.length
 
 
-class ReferentArray(Array[T]):
-    def __init__(self, length_field: structs.Field[int]) -> None:
+class ReferentArray(Array[T], DependentRelation[int]):
+    def __init__(self, length_field: Field[int]) -> None:
         super().__init__()
         self.length_field = length_field
+        self.length_field.depend_on(self)
 
     def get_length(self, instance: t.Any) -> int:
         return self.length_field.getvalue(instance)
 
-    def setvalue(self, instance: t.Any, value: t.Iterable[T]) -> None:
-        value = list(value)
-        self.length_field.setvalue(instance, len(value))
-        super().setvalue(instance, value)
+    def update(self, instance: t.Any, referent: "Field[int]") -> int:
+        return len(self.getvalue(instance))
+
+
+class PrefixedArray(Array[T]):
+    def __init__(self, prefix: Codec[int]) -> None:
+        super().__init__()
+        self.prefix = prefix
+
+    def get_length(self, instance: t.Any) -> int:
+        return len(self.getvalue(instance))
+
+    def build_into(self, instance: t.Any, stream: io.BufferedIOBase) -> None:
+        assert self.codec is not None
+        length = self.get_length(instance)
+        self.prefix.build_into(stream, length)
+        super().build_into(instance, stream)
+
+    def parse_from(self, instance: t.Any, stream: io.BufferedIOBase) -> None:
+        assert self.codec is not None
+        length = self.prefix.parse_from(stream)
+        value = []
+        for _ in range(length):
+            value.append(self.codec.parse_from(stream))
+        self.setvalue(instance, value)
+
+    def sizeof(self, instance: t.Any) -> int:
+        assert self.codec is not None
+        return self.prefix.sizeof(self.get_length(instance)) + sum(
+            self.codec.sizeof(item) for item in self.getvalue(instance)
+        )

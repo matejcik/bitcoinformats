@@ -62,11 +62,20 @@ class Context:
         assert self.stack_top is not None
         setattr(self.stack_top.instance, field.name, value)
 
-    def push(self, instance: "Struct", label: str) -> tx.Self:
-        if self.stack_top is not None:
-            stream = self.stack_top.stream
-        else:
-            stream = self.stream
+    def push(
+        self,
+        label: str,
+        instance: t.Optional["Struct"] = None,
+        stream: t.Optional[io.BufferedIOBase] = None,
+    ) -> tx.Self:
+        if stream is None:
+            if self.stack_top is not None:
+                stream = self.stack_top.stream
+            else:
+                stream = self.stream
+        if instance is None:
+            assert self.stack_top is not None
+            instance = self.stack_top.instance
         self.stack_top = ContextItem(instance, label, stream)
         self.stack.append(self.stack_top)
         return self
@@ -149,14 +158,21 @@ def get_type_hints(owner: type) -> t.Dict[str, t.Any]:
     return {k: v for k, v in all_hints.items() if k in owner.__annotations__}
 
 
+def safe_issubclass(
+    cls: type, class_or_tuple: t.Union[type, t.Tuple[type, ...]]
+) -> bool:
+    return isinstance(cls, type) and issubclass(cls, class_or_tuple)
+
+
 def extract_codec_type(field: t.Any) -> Codec:
+    from .bytesize import BytesCodec
+
     origin = tx.get_origin(field)
     args = tx.get_args(field)
     if origin is t.Annotated:
         return extract_codec_type(args[1])
-    if origin in (list, t.List):
-        return extract_codec_type(args[0])
+    if safe_issubclass(field, bytes):
+        return BytesCodec()
     if isinstance(field, Codec):
         return field
-    print("at field: ", field)
     raise TypeError("Unrecognized field type")

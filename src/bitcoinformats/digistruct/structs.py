@@ -13,12 +13,6 @@ T = t.TypeVar("T")
 __all__ = ["Spec", "StructInfo", "Struct", "Adapter"]
 
 
-def safe_issubclass(
-    cls: type, class_or_tuple: t.Union[type, t.Tuple[type, ...]]
-) -> bool:
-    return isinstance(cls, type) and issubclass(cls, class_or_tuple)
-
-
 class Spec:
     def __init__(self, owner: t.Type["Struct"]) -> None:
         self.owner = owner
@@ -138,7 +132,7 @@ class Struct:
     # codec protocol methods
     @classmethod
     def build_value(cls, ctx: Context, self: tx.Self) -> None:
-        with ctx.push(self, f"struct {cls.__name__!r}"):
+        with ctx.push(f"struct {cls.__name__!r}", self):
             for field in cls._spec.fields.values():
                 if not isinstance(field.codec, RecalcCodec):
                     continue
@@ -158,7 +152,7 @@ class Struct:
     @classmethod
     def parse_value(cls, ctx: Context) -> tx.Self:
         instance = cls.__new__(cls)
-        with ctx.push(instance, f"struct {cls.__name__!r}"):
+        with ctx.push(f"struct {cls.__name__!r}", instance):
             for field in cls._spec.fields.values():
                 value = field.codec.parse_value(ctx)
                 setattr(instance, field.name, value)

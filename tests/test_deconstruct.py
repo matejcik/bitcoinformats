@@ -87,20 +87,20 @@ def test_array_wrong_count():
         Arrays(fixed=[1, 2, 3, 4]).build()
 
 
-# class Bytes(d.Struct):
-#     fixed: bytes = d.bytes(3)
-#     prefixed: bytes = d.bytes(prefix=d.be.int8)
-#     count: d.be.int8 = d.auto()
-#     variable: bytes = d.bytes(count)
-#     greedy: bytes
+class Bytes(d.Struct):
+    fixed: bytes = d.size(3)
+    prefixed: bytes = d.size(prefix=d.be.int8)
+    count: d.be.int8 = d.auto()
+    variable: bytes = d.size(count)
+    greedy: bytes
 
 
-# def test_bytes():
-#     b = Bytes(fixed=b"abc", prefixed=b"def", variable=b"ghi", greedy=b"jkl")
-#     assert b.build() == b"\x03abc\x03def\x03ghijkl"
+def test_bytes():
+    b = Bytes(fixed=b"abc", prefixed=b"def", variable=b"ghi", greedy=b"jkl")
+    assert b.build() == b"abc\x03def\x03ghijkl"
 
-#     bp = Bytes.parse(b"\x03abc\x03def\x02ghijkl")
-#     assert bp.fixed == b"abc"
-#     assert bp.count == 2
-#     assert bp.variable == b"gh"
-#     assert bp.greedy == b"ijkl"
+    bp = Bytes.parse(b"abc\x03def\x02ghijkl")
+    assert bp.fixed == b"abc"
+    assert bp.count == 2
+    assert bp.variable == b"gh"
+    assert bp.greedy == b"ijkl"

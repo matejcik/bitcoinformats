@@ -4,7 +4,6 @@ import hashlib
 
 import construct as c
 
-
 from ._ripemd160 import ripemd160
 
 

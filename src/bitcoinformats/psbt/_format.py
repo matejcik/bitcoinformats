@@ -2,11 +2,10 @@ import typing as t
 import warnings
 
 import construct as c
-from typing_extensions import dataclass_transform, Self
+from typing_extensions import Self, dataclass_transform
 
 from ..struct import Struct, subcon
 from ..utils import CompactUint
-
 from .error import PsbtError
 
 PSBT_PROPRIETARY_BYTE = 0xFC

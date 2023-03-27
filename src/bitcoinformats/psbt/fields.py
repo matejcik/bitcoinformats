@@ -1,10 +1,10 @@
 import typing as t
-from typing_extensions import Self
 
 import construct as c
+from typing_extensions import Self
 
 from ..struct import Struct
-from ..utils import CompactUint, BitcoinBytes
+from ..utils import BitcoinBytes, CompactUint
 
 
 class Bip32Field(Struct):

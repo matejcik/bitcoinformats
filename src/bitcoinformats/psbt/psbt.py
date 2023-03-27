@@ -1,12 +1,12 @@
-from dataclasses import dataclass, field
 import typing as t
+from dataclasses import dataclass, field
 
 from construct import ConstructError
 from typing_extensions import Self
 
 from . import definitions as defs
-from .error import PsbtError
 from ._format import PsbtEnvelope, PsbtKeyValue
+from .error import PsbtError
 
 
 def _filter_forbidden_fields(

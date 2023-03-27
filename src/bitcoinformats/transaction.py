@@ -5,7 +5,7 @@ from enum import IntEnum
 import construct as c
 
 from .struct import Struct, subcon
-from .utils import CompactUint, ConstFlag, hash256, BitcoinBytes, TxHash
+from .utils import BitcoinBytes, CompactUint, ConstFlag, TxHash, hash256
 
 
 class HashType(IntEnum):

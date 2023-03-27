@@ -7,11 +7,11 @@ from ..utils import CompactUint
 from ._format import PsbtMapType, keytype
 from .fields import (
     Bip32Field,
-    TxModifiableBits,
-    TapScriptSigKey,
-    TapLeafScript,
     TapBip32Derivation,
+    TapLeafScript,
+    TapScriptSigKey,
     TapTree,
+    TxModifiableBits,
 )
 
 String = c.GreedyString("utf-8")

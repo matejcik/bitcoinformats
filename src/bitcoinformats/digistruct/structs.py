@@ -3,10 +3,10 @@ import typing as t
 
 import typing_extensions as tx
 
-from .base import Field, get_type_hints, extract_codec_type, MISSING
+from .base import Field, get_type_hints, MISSING, Context
 from . import arrays
 from .field_specifiers import field
-from .exceptions import DeconstructError, BuildError
+from .exceptions import DeconstructError, BuildError, ParseError
 
 
 T = t.TypeVar("T")
@@ -27,15 +27,20 @@ class Spec:
         self.decorate_owner()
 
     @staticmethod
-    def _make_field(field: t.Any, value: t.Any) -> t.Optional[Field]:
+    def _make_field(field_type: t.Any, value: t.Any) -> Field:
         if isinstance(value, Field):
             return value
 
-        origin = tx.get_origin(field)
+        origin = tx.get_origin(field_type)
         if origin in (list, t.List):
-            return arrays.GreedyArray()
+            return arrays.ArrayField()
         else:
             return Field()
+
+    @staticmethod
+    def _should_skip(field_type: t.Any) -> bool:
+        origin = tx.get_origin(field_type)
+        return origin is t.ClassVar
 
     @classmethod
     def _extract_fields(cls, owner: t.Type["Struct"]) -> t.Dict[str, Field]:
@@ -55,19 +60,11 @@ class Spec:
 
         annotations = get_type_hints(owner)
         for name, field_type in annotations.items():
-            codec = extract_codec_type(field_type)
-            if codec is None:
+            if cls._should_skip(field_type):
                 continue
             value = getattr(owner, name, MISSING)
             field = cls._make_field(field_type, value)
-            if field is None:
-                continue
-
-            field.name = name
-            field.codec = codec
-            if not isinstance(value, Field):
-                field.default = value
-
+            field.fill(name, field_type, value)
             fields[name] = field
 
         return fields
@@ -78,18 +75,21 @@ class Spec:
         setattr(self.owner, "_spec", self)
 
     def populate(self, instance: "Struct", kwargs: t.Dict[str, t.Any]) -> None:
-        # TODO handle defaults
+        # provided arguments
         for name, value in kwargs.items():
             if name not in self.fields or self.fields[name].is_dependent():
                 raise TypeError(f"Unexpected keyword argument {name!r}")
             setattr(instance, name, value)
+
+        # remaining fields
         for name, field in self.fields.items():
-            if name not in kwargs:
-                if field.is_dependent():
-                    continue
-                if field.default is MISSING:
-                    raise TypeError(f"Missing required argument {name!r}")
-                setattr(instance, name, field.default)
+            if name in kwargs:
+                continue
+            if field.is_dependent():
+                continue
+            if field.default is MISSING:
+                raise TypeError(f"Missing required argument {name!r}")
+            setattr(instance, name, field.default)
 
     def as_dict(self, instance: "Struct") -> t.Dict[str, t.Any]:
         return {name: getattr(instance, name) for name in self.fields}
@@ -118,10 +118,11 @@ class Struct:
 
     @classmethod
     def stream_parse(cls, stream: io.BufferedIOBase) -> tx.Self:
-        instance = cls.__new__(cls)
-        for field in cls._spec.fields.values():
-            field.parse_from(instance, stream)
-        return instance
+        ctx = Context(stream)
+        result = cls.parse_value(ctx)
+        if stream.read(1):
+            raise ParseError("Unparsed data at end of stream")
+        return result
 
     @classmethod
     def parse(cls, data: bytes) -> tx.Self:
@@ -129,12 +130,8 @@ class Struct:
         return cls.stream_parse(inbuf)
 
     def stream_build(self, stream: io.BufferedIOBase) -> None:
-        for field in self._spec.fields.values():
-            try:
-                field.recalculate(self)
-                field.build_into(self, stream)
-            except Exception as e:
-                raise BuildError(f"Failed to build field {field.name!r}", e) from e
+        ctx = Context(stream)
+        self.build_value(ctx, self)
 
     def build(self) -> bytes:
         outbuf = io.BytesIO()
@@ -143,15 +140,28 @@ class Struct:
 
     # codec protocol methods
     @classmethod
-    def build_into(cls, stream: io.BufferedIOBase, value: tx.Self) -> None:
-        value.stream_build(stream)
+    def build_value(cls, ctx: Context, self: tx.Self) -> None:
+        with ctx.push(self, f"struct {cls.__name__!r}"):
+            for field in cls._spec.fields.values():
+                try:
+                    field.recalculate(ctx)
+                    value = getattr(self, field.name)
+                    field.codec.build_value(ctx, value)
+                except Exception as e:
+                    raise BuildError(f"Failed to build field {field.name!r}", e) from e
 
     @classmethod
-    def parse_from(cls, stream: io.BufferedIOBase) -> tx.Self:
-        return cls.stream_parse(stream)
+    def parse_value(cls, ctx: Context) -> tx.Self:
+        instance = cls.__new__(cls)
+        with ctx.push(instance, f"struct {cls.__name__!r}"):
+            for field in cls._spec.fields.values():
+                value = field.codec.parse_value(ctx)
+                setattr(instance, field.name, value)
+
+        return instance
 
     @classmethod
-    def sizeof(cls, value: tx.Self) -> int:
+    def size_of(cls, ctx: Context, value: tx.Self) -> int:
         # TODO calculate this without building
         return len(value.build())
 
@@ -176,15 +186,24 @@ class Adapter(Struct, t.Generic[T]):
         raise NotImplementedError
 
     @classmethod
-    def build_into(cls, stream: io.BufferedIOBase, value: T) -> None:
-        actual_type = cls.encode(value)
-        actual_type.stream_build(stream)
+    def build_value(cls, ctx: Context, value: T) -> None:
+        actual = cls.encode(value)
+        super().build_value(ctx, actual)
 
     @classmethod
-    def parse_from(cls, stream: io.BufferedIOBase) -> T:
-        actual_type = cls.stream_parse(stream)
-        return actual_type.decode()
+    def parse_value(cls, ctx: Context) -> T:
+        actual = super().parse_value(ctx)
+        return actual.decode()
 
     @classmethod
-    def sizeof(cls, value: T) -> int:
-        return cls.sizeof(cls.encode(value))
+    def size_of(cls, ctx: Context, value: T) -> int:
+        return super().size_of(ctx, cls.encode(value))
+
+    def stream_build(self, stream: io.BufferedIOBase) -> None:
+        # skip our override of build_value
+        super().build_value(Context(stream), self)
+
+    @classmethod
+    def stream_parse(cls, stream: io.BufferedIOBase) -> tx.Self:
+        # skip our override of parse_value
+        return super().parse_value(Context(stream))

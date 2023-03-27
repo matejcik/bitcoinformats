@@ -1,11 +1,10 @@
 import io
 import typing as t
 
-from .base import Codec, Field, extract_codec_type, DependentRelation
-from . import exceptions
+import typing_extensions as tx
 
-if t.TYPE_CHECKING:
-    from typing_extensions import Self
+from .base import Codec, Field, extract_codec_type, DependentRelation, Context
+from . import exceptions
 
 T = t.TypeVar("T")
 
@@ -34,30 +33,22 @@ def array(
     prefix: t.Optional[t.Type[int]] = None,
     byte_size: t.Optional[int] = None,
 ) -> t.Any:
-    n_args = sum(arg is not None for arg in (length, prefix, byte_size))
-    if n_args == 0:
-        return GreedyArray()
-
-    if n_args > 1:
-        raise ValueError("Only one of length, prefix, or byte_size may be specified")
-
-    if isinstance(length, int):
-        return FixedSizeArray(length)
-
-    if isinstance(length, Field):
-        return ReferentArray(length)
-
-    if prefix is not None:
-        codec = extract_codec_type(prefix)
-        if codec is None:
-            raise TypeError("prefix must be a codec")
-        return PrefixedArray(codec)
-
-    raise NotImplementedError
+    return ArrayField(length=length, prefix=prefix, byte_size=byte_size)
 
 
-class Array(Field[T]):
+class ArrayField(Field[t.List[T]], DependentRelation[int]):
     _default: t.Iterable[T] = ()
+
+    def __init__(
+        self,
+        length: t.Union[int, Field[int], None] = None,
+        prefix: t.Optional[t.Type[int]] = None,
+        byte_size: t.Optional[int] = None,
+    ) -> None:
+        super().__init__()
+        self.length = length
+        self.prefix = prefix
+        self.byte_size = byte_size
 
     @property
     def default(self) -> t.List[T]:
@@ -73,121 +64,133 @@ class Array(Field[T]):
         else:
             raise TypeError("array default must be an iterable")
 
-    def get_length(self, instance: t.Any) -> int:
+    def __set__(self, instance: t.Any, value: t.Iterable[T]) -> None:
+        super().__set__(instance, list(value))
+
+    def make_codec(self, field_type: t.Any) -> Codec[t.List[T]]:
+        assert tx.get_origin(field_type) in (list, t.List)
+        inner_codec = extract_codec_type(tx.get_args(field_type)[0])
+
+        n_args = sum(
+            arg is not None for arg in (self.length, self.prefix, self.byte_size)
+        )
+        if n_args == 0:
+            return GreedyArray(inner_codec)
+
+        if n_args > 1:
+            raise ValueError(
+                "Only one of length, prefix, or byte_size may be specified"
+            )
+
+        if isinstance(self.length, int):
+            return FixedSizeArray(inner_codec, self.length)
+
+        if isinstance(self.length, Field):
+            self.length.depend_on(self)
+            return ReferentArray(inner_codec, self.length)
+
+        if self.prefix is not None:
+            prefix_codec = extract_codec_type(self.prefix)
+            if prefix_codec is None:
+                raise TypeError("prefix must be a codec")
+            return PrefixedArray(inner_codec, prefix_codec)
+
         raise NotImplementedError
 
-    def setvalue(self, instance: t.Any, value: t.Iterable[T]) -> None:
-        super().setvalue(instance, list(value))  # type: ignore
+    def update(self, ctx: Context, referent: "Field[int]") -> int:
+        # TODO what here?
+        return len(ctx.getvalue(self))
 
-    if t.TYPE_CHECKING:
 
-        def getvalue(self, instance: t.Any) -> t.List[T]:
-            ...
+class Array(Codec[t.List[T]]):
+    def __init__(self, inner_codec: Codec[T]) -> None:
+        self.inner_codec = inner_codec
 
-        def __get__(
-            self, instance: t.Any, owner: t.Type[t.Any]
-        ) -> t.Union["Self", t.List[T]]:
-            ...
+    def get_length(self, ctx: Context) -> int:
+        raise NotImplementedError
 
-        def __set__(self, instance: t.Any, value: t.Iterable[T]) -> None:
-            ...
-
-    def _check_length(self, instance: t.Any) -> None:
-        length = self.get_length(instance)
-        value = self.getvalue(instance)
+    def _check_length(self, ctx: Context, value: t.Collection[T]) -> None:
+        length = self.get_length(ctx)
         if len(value) != length:
             raise exceptions.BuildError(
                 f"Array length mismatch: expected a length of {length}, "
                 f"but got a length of {len(value)}"
             )
 
-    def build_into(self, instance: t.Any, stream: io.BufferedIOBase) -> None:
-        assert self.codec is not None
-        self._check_length(instance)
-        for item in self.getvalue(instance):
-            # TODO support nested arrays?
-            self.codec.build_into(stream, item)
+    def build_value(self, ctx: Context, value: t.Collection[T]) -> None:
+        self._check_length(ctx, value)
+        for item in value:
+            self.inner_codec.build_value(ctx, item)
 
-    def parse_from(self, instance: t.Any, stream: io.BufferedIOBase) -> None:
-        assert self.codec is not None
-        length = self.get_length(instance)
+    def parse_value(self, ctx: Context) -> t.List[T]:
+        return self.parse_with_length(ctx, self.get_length(ctx))
+
+    def parse_with_length(self, ctx: Context, length: int) -> t.List[T]:
         value = []
         for _ in range(length):
-            value.append(self.codec.parse_from(stream))
-        self.setvalue(instance, value)
+            value.append(self.inner_codec.parse_value(ctx))
+        return value
 
-    def sizeof(self, instance: t.Any) -> int:
-        assert self.codec is not None
-        self._check_length(instance)
-        return sum(self.codec.sizeof(item) for item in self.getvalue(instance))
+    def size_of(self, ctx: Context, value: t.Collection[T]) -> int:
+        self._check_length(ctx, value)
+        return sum(self.inner_codec.size_of(ctx, item) for item in value)
 
 
 class GreedyArray(Array[T]):
-    def get_length(self, instance: t.Any) -> int:
-        return len(self.getvalue(instance))
+    def _check_length(self, ctx: Context, value: t.Collection[T]) -> None:
+        pass
 
-    def parse_from(self, instance: t.Any, stream: io.BufferedIOBase) -> None:
-        assert self.codec is not None
+    def parse_value(self, ctx: Context) -> t.List[T]:
         value = []
         while True:
-            start_pos = stream.tell()
+            start_pos = ctx.tell()
             try:
-                value.append(self.codec.parse_from(stream))
+                value.append(self.inner_codec.parse_value(ctx))
             except exceptions.EndOfStream:
-                end_pos = stream.tell()
+                end_pos = ctx.tell()
                 if end_pos != start_pos:
                     # partially parsed array element
-                    raise
-                # eof after fully parsing the previous element
-                self.setvalue(instance, value)
+                    ctx.seek(start_pos)
+
+                # end of (parseable part of) stream
+                return value
 
 
 class FixedSizeArray(Array[T]):
-    def __init__(self, length: int) -> None:
-        super().__init__()
+    def __init__(self, inner_codec: Codec[T], length: int) -> None:
+        super().__init__(inner_codec)
         self.length = length
 
-    def get_length(self, instance: t.Any) -> int:
+    def get_length(self, ctx: Context) -> int:
         return self.length
 
 
-class ReferentArray(Array[T], DependentRelation[int]):
-    def __init__(self, length_field: Field[int]) -> None:
-        super().__init__()
+class ReferentArray(Array[T]):
+    def __init__(self, inner_codec: Codec[T], length_field: Field[int]) -> None:
+        super().__init__(inner_codec)
         self.length_field = length_field
-        self.length_field.depend_on(self)
 
-    def get_length(self, instance: t.Any) -> int:
-        return self.length_field.getvalue(instance)
-
-    def update(self, instance: t.Any, referent: "Field[int]") -> int:
-        return len(self.getvalue(instance))
+    def get_length(self, ctx: Context) -> int:
+        return ctx.getvalue(self.length_field)
 
 
 class PrefixedArray(Array[T]):
-    def __init__(self, prefix: Codec[int]) -> None:
-        super().__init__()
-        self.prefix = prefix
+    def __init__(self, inner_codec: Codec[T], prefix_codec: Codec[int]) -> None:
+        super().__init__(inner_codec)
+        self.prefix_codec = prefix_codec
 
-    def get_length(self, instance: t.Any) -> int:
-        return len(self.getvalue(instance))
+    def _check_length(self, ctx: Context, value: t.Collection[T]) -> None:
+        pass
 
-    def build_into(self, instance: t.Any, stream: io.BufferedIOBase) -> None:
-        assert self.codec is not None
-        length = self.get_length(instance)
-        self.prefix.build_into(stream, length)
-        super().build_into(instance, stream)
+    def build_value(self, ctx: Context, value: t.Collection[T]) -> None:
+        self.prefix_codec.build_value(ctx, len(value))
+        return super().build_value(ctx, value)
 
-    def parse_from(self, instance: t.Any, stream: io.BufferedIOBase) -> None:
-        assert self.codec is not None
-        length = self.prefix.parse_from(stream)
-        value = []
-        for _ in range(length):
-            value.append(self.codec.parse_from(stream))
-        self.setvalue(instance, value)
+    def parse_value(self, ctx: Context) -> t.List[T]:
+        length = self.prefix_codec.parse_value(ctx)
+        return self.parse_with_length(ctx, length)
 
-    def sizeof(self, instance: t.Any) -> int:
-        assert self.codec is not None
-        return self.prefix.sizeof(self.get_length(instance)) + sum(
-            self.codec.sizeof(item) for item in self.getvalue(instance)
+    def size_of(self, ctx: Context, value: t.Collection[T]) -> int:
+        return self.prefix_codec.size_of(ctx, len(value)) + sum(
+            self.inner_codec.size_of(ctx, item) for item in value
         )

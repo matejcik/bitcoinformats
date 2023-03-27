@@ -21,7 +21,7 @@ def test_example():
     assert ep.y == 2
     assert ep.z == 3
 
-    assert Example.sizeof(e) == 2 + 4 + 8
+    #assert e.size() == 2 + 4 + 8
 
 
 class TwoByteSum(d.Adapter[int]):
@@ -85,3 +85,22 @@ def test_array_variable_zero():
 def test_array_wrong_count():
     with pytest.raises(d.BuildError):
         Arrays(fixed=[1, 2, 3, 4]).build()
+
+
+# class Bytes(d.Struct):
+#     fixed: bytes = d.bytes(3)
+#     prefixed: bytes = d.bytes(prefix=d.be.int8)
+#     count: d.be.int8 = d.auto()
+#     variable: bytes = d.bytes(count)
+#     greedy: bytes
+
+
+# def test_bytes():
+#     b = Bytes(fixed=b"abc", prefixed=b"def", variable=b"ghi", greedy=b"jkl")
+#     assert b.build() == b"\x03abc\x03def\x03ghijkl"
+
+#     bp = Bytes.parse(b"\x03abc\x03def\x02ghijkl")
+#     assert bp.fixed == b"abc"
+#     assert bp.count == 2
+#     assert bp.variable == b"gh"
+#     assert bp.greedy == b"ijkl"

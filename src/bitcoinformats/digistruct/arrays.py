@@ -3,8 +3,8 @@ import typing as t
 
 import typing_extensions as tx
 
-from .base import Codec, Field, extract_codec_type, DependentRelation, Context
 from . import exceptions
+from .base import Codec, Context, Field, RecalcCodec, extract_codec_type
 
 T = t.TypeVar("T")
 
@@ -36,7 +36,7 @@ def array(
     return ArrayField(length=length, prefix=prefix, byte_size=byte_size)
 
 
-class ArrayField(Field[t.List[T]], DependentRelation[int]):
+class ArrayField(Field[t.List[T]]):
     _default: t.Iterable[T] = ()
 
     def __init__(
@@ -86,7 +86,6 @@ class ArrayField(Field[t.List[T]], DependentRelation[int]):
             return FixedSizeArray(inner_codec, self.length)
 
         if isinstance(self.length, Field):
-            self.length.depend_on(self)
             return ReferentArray(inner_codec, self.length)
 
         if self.prefix is not None:
@@ -97,8 +96,7 @@ class ArrayField(Field[t.List[T]], DependentRelation[int]):
 
         raise NotImplementedError
 
-    def update(self, ctx: Context, referent: "Field[int]") -> int:
-        # TODO what here?
+    def _set_array_length(self, ctx: Context, referent: "Field[int]") -> int:
         return len(ctx.getvalue(self))
 
 
@@ -134,6 +132,12 @@ class Array(Codec[t.List[T]]):
     def size_of(self, ctx: Context, value: t.Collection[T]) -> int:
         self._check_length(ctx, value)
         return sum(self.inner_codec.size_of(ctx, item) for item in value)
+
+    def recalculate(self, ctx: Context, value: t.Collection[T]) -> None:
+        self._check_length(ctx, value)
+        if isinstance(self.inner_codec, RecalcCodec):
+            for item in value:
+                self.inner_codec.recalculate(ctx, item)
 
 
 class GreedyArray(Array[T]):
@@ -172,6 +176,10 @@ class ReferentArray(Array[T]):
 
     def get_length(self, ctx: Context) -> int:
         return ctx.getvalue(self.length_field)
+
+    def recalculate(self, ctx: Context, value: t.Collection[T]) -> None:
+        ctx.setvalue(self.length_field, len(value))
+        super().recalculate(ctx, value)
 
 
 class PrefixedArray(Array[T]):

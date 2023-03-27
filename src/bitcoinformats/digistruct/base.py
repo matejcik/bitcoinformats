@@ -97,8 +97,9 @@ class Codec(t.Protocol[T]):
         ...
 
 
-class DependentRelation(t.Protocol[T]):
-    def update(self, instance: t.Any, referent: "Field[T]") -> T:
+@t.runtime_checkable
+class RecalcCodec(Codec[T], t.Protocol[T]):
+    def recalculate(self, context: Context, value: T) -> None:
         ...
 
 
@@ -107,9 +108,6 @@ class Field(t.Generic[T]):
     _codec: t.Optional[Codec[T]] = None
 
     default: t.Any = MISSING
-
-    def __init__(self) -> None:
-        self.dependent_relations: t.List[DependentRelation[T]] = []
 
     @property
     def name(self) -> str:
@@ -141,23 +139,6 @@ class Field(t.Generic[T]):
 
     def __set__(self, instance: t.Any, value: T) -> None:
         instance.__dict__[self.name] = value
-
-    def depend_on(self, relation: DependentRelation[T]) -> None:
-        self.dependent_relations.append(relation)
-
-    def is_dependent(self) -> bool:
-        return bool(self.dependent_relations)
-
-    def recalculate(self, ctx: Context) -> None:
-        if not self.is_dependent():
-            return
-
-        values = [rel.update(ctx, self) for rel in self.dependent_relations]
-        # all values must be the same
-        if any(v != values[0] for v in values):
-            raise BuildError(f"Inconsistent values for field {self.name!r}")
-
-        ctx.setvalue(self, values[0])
 
 
 def get_type_hints(owner: type) -> t.Dict[str, t.Any]:

@@ -3,11 +3,10 @@ import typing as t
 
 import typing_extensions as tx
 
-from .base import Field, get_type_hints, MISSING, Context
 from . import arrays
+from .base import MISSING, Context, Field, get_type_hints, RecalcCodec
+from .exceptions import BuildError, DeconstructError, ParseError
 from .field_specifiers import field
-from .exceptions import DeconstructError, BuildError, ParseError
-
 
 T = t.TypeVar("T")
 
@@ -77,15 +76,13 @@ class Spec:
     def populate(self, instance: "Struct", kwargs: t.Dict[str, t.Any]) -> None:
         # provided arguments
         for name, value in kwargs.items():
-            if name not in self.fields or self.fields[name].is_dependent():
+            if name not in self.fields:
                 raise TypeError(f"Unexpected keyword argument {name!r}")
             setattr(instance, name, value)
 
         # remaining fields
         for name, field in self.fields.items():
             if name in kwargs:
-                continue
-            if field.is_dependent():
                 continue
             if field.default is MISSING:
                 raise TypeError(f"Missing required argument {name!r}")
@@ -143,8 +140,16 @@ class Struct:
     def build_value(cls, ctx: Context, self: tx.Self) -> None:
         with ctx.push(self, f"struct {cls.__name__!r}"):
             for field in cls._spec.fields.values():
+                if not isinstance(field.codec, RecalcCodec):
+                    continue
                 try:
-                    field.recalculate(ctx)
+                    value = getattr(self, field.name)
+                    field.codec.recalculate(ctx, value)
+                except Exception as e:
+                    raise BuildError(f"Failed to build field {field.name!r}", e) from e
+
+            for field in cls._spec.fields.values():
+                try:
                     value = getattr(self, field.name)
                     field.codec.build_value(ctx, value)
                 except Exception as e:

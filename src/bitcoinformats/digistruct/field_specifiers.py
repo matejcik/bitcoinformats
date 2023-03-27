@@ -1,7 +1,6 @@
 import typing as t
 
-from . import structs
-
+from .base import Field
 
 __all__ = [
     "field",
@@ -12,18 +11,10 @@ INTERNAL_VALUE = object()
 
 
 def field(**kwargs) -> t.Any:
-    return structs.Field()
+    return Field()
 
 
-@t.overload
 def auto(init: t.Literal[False] = False) -> t.Any:
-    ...
-
-
-@t.overload
-def auto(init: bool) -> t.Any:
-    ...
-
-
-def auto(init: bool = False) -> t.Any:
-    return structs.Field()
+    field = Field()
+    field.default = None
+    return field

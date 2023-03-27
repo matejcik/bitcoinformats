@@ -4,24 +4,39 @@ import bitcoinformats.digistruct as d
 
 
 class Example(d.Struct):
-    x: d.little.int16
-    y: "d.little.int32"
-    z: d.little.int64 = d.field()
+    x: d.little.int8
+    y: "d.little.int16"
+    z: d.little.int32 = d.field()
 
-    def hello(self) -> None:
-        print("hello", self.x)
+
+class Nested(d.Struct):
+    a: Example
+    b: Example
+    n: d.little.int8
 
 
 def test_example():
     e = Example(x=1, y=2, z=3)
-    assert e.build() == b"\x01\x00\x02\x00\x00\x00\x03\x00\x00\x00\x00\x00\x00\x00"
+    assert e.build() == b"\x01\x02\x00\x03\x00\x00\x00"
 
-    ep = Example.parse(b"\x01\x00\x02\x00\x00\x00\x03\x00\x00\x00\x00\x00\x00\x00")
+    ep = Example.parse(b"\x01\x02\x00\x03\x00\x00\x00")
     assert ep.x == 1
     assert ep.y == 2
     assert ep.z == 3
 
-    assert e.size() == 2 + 4 + 8
+    assert e.size() == 1 + 2 + 4
+
+
+def test_nested():
+    n = Nested(a=Example(x=1, y=2, z=3), b=Example(x=4, y=5, z=6), n=7)
+    assert n.build() == b"\x01\x02\x00\x03\x00\x00\x00\x04\x05\x00\x06\x00\x00\x00\x07"
+
+
+def test_trailing():
+    e = Example(x=1, y=2, z=3)
+    data = e.build()
+    with pytest.raises(d.ParseError):
+        Example.parse(data + b"\x00")
 
 
 class TwoByteSum(d.Adapter[int]):

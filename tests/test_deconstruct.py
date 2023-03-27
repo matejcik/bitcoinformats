@@ -21,7 +21,7 @@ def test_example():
     assert ep.y == 2
     assert ep.z == 3
 
-    #assert e.size() == 2 + 4 + 8
+    assert e.size() == 2 + 4 + 8
 
 
 class TwoByteSum(d.Adapter[int]):

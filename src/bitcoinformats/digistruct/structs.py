@@ -162,8 +162,14 @@ class Struct:
 
     @classmethod
     def size_of(cls, ctx: Context, value: tx.Self) -> int:
-        # TODO calculate this without building
-        return len(value.build())
+        return sum(
+            field.codec.size_of(ctx, getattr(value, field.name))
+            for field in cls._spec.fields.values()
+        )
+
+    def size(self) -> int:
+        # TODO: is it OK to use an empty context like this?
+        return self.size_of(Context(io.BytesIO()), self)
 
 
 S = t.TypeVar("S", bound=Struct)

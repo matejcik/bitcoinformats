@@ -96,9 +96,6 @@ class ArrayField(Field[t.List[T]]):
 
         raise NotImplementedError
 
-    def _set_array_length(self, ctx: Context, referent: "Field[int]") -> int:
-        return len(ctx.getvalue(self))
-
 
 class Array(Codec[t.List[T]]):
     def __init__(self, inner_codec: Codec[T]) -> None:

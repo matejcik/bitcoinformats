@@ -10,8 +10,8 @@ from ecdsa.curves import SECP256k1
 from ecdsa.ellipticcurve import INFINITY, Point
 from typing_extensions import Self
 
+from . import digistruct as d
 from .base58 import b58check_decode, b58check_encode
-from .struct import Struct
 from .utils import hash160
 
 if TYPE_CHECKING:
@@ -41,23 +41,13 @@ def _calculate_pubkey(privkey: int | mpz) -> Point:
     return SECP256k1.generator * privkey
 
 
-class Xpub(Struct):
-    version: int
-    depth: int
-    fingerprint: bytes
-    child_num: int
-    chain_code: bytes
-    key_bytes: bytes
-
-    SUBCON = c.Struct(
-        "version" / c.Int32ub,
-        "depth" / c.Int8ub,
-        "fingerprint" / c.Bytes(4),
-        "child_num" / c.Int32ub,
-        "chain_code" / c.Bytes(32),
-        "key_bytes" / c.Bytes(33),
-        c.Terminated,
-    )
+class Xpub(d.Struct):
+    version: d.big.uint32
+    depth: d.big.uint8
+    fingerprint: bytes = d.size(4)
+    child_num: d.big.uint32
+    chain_code: bytes = d.size(32)
+    key_bytes: bytes = d.size(33)
 
     @classmethod
     def decode(cls, xpub: str) -> ExtendedKey:
